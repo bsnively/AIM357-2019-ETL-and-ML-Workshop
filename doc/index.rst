@@ -13,6 +13,10 @@ using NYC Taxi Dataset.  It includes the following steps:
 - Assess the response
 - Send an alert if value is outside specified range
 
+The workshop uses the following architecture:
+
+.. image:: images/WorkshopArchitecture.png
+
 *********************************************************************
 Crawl, Discover, and Explore the new datasets in a Data lake
 *********************************************************************
