@@ -23,6 +23,12 @@ Overview
 
 .. toctree::
     :maxdepth: 2
+    :collapse_navigation: False
 
     overview
 
+********
+Overview
+********
+
+`CNN <http://cnn.com>`_
