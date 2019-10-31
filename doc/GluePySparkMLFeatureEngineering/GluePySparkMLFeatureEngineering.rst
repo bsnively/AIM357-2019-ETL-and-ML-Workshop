@@ -4,7 +4,7 @@ Feature Engineering and Training our Model
 We’ll first setup the glue context in which we can read the glue data
 catalog, as well as setup some constants.
 
-.. code:: python2
+.. code:: python3
 
     import sys
     from awsglue.transforms import *
@@ -56,7 +56,7 @@ the glue data catalog and looking up the data
 
 Here we can see there are **500 million** records
 
-.. code:: python2
+.. code:: python3
 
     taxi_data = glueContext.create_dynamic_frame.from_catalog(database=database_name, table_name=canonical_table_name)
     print("2018/2019 Taxi Data Count: ", taxi_data.count())
@@ -105,7 +105,7 @@ Caching in Spark
 We’ll use the taxi dataframe a bit repeatitively, so we’ll cache it ehre
 and show some sample records.
 
-.. code:: python2
+.. code:: python3
 
     df = taxi_data.toDF().cache()
     df.show(30, False)
@@ -163,7 +163,7 @@ data in it, and timestamps that were outside the range that are valid.
 Let’s ensure we are only using the valid records when aggregating and
 creating our time series.
 
-.. code:: python2
+.. code:: python3
 
     from pyspark.sql.functions import to_date, lit
     from pyspark.sql.types import TimestampType
@@ -193,7 +193,7 @@ count/aggregate over those.
 
 Let’s start by adding a ts_resampled column
 
-.. code:: python2
+.. code:: python3
 
     from pyspark.sql.functions import col, max as max_, min as min_
     
@@ -250,7 +250,7 @@ Creating our time series data
 You can see now that we are resampling per day the resample column, in
 which we can now aggregate across.
 
-.. code:: python2
+.. code:: python3
 
     from pyspark.sql import functions as func
     
@@ -286,7 +286,7 @@ which we can now aggregate across.
 TODO – Right now the “null” column is showing up instead of the fhvhv.
 ----------------------------------------------------------------------
 
-.. code:: python2
+.. code:: python3
 
     #time_series_df = count_per_day_resamples.groupBy(["ts_resampled", "pulocationid", "dolocationid"])\
     time_series_df = count_per_day_resamples.groupBy(["ts_resampled"])\
@@ -344,7 +344,7 @@ Local Data Manipulation
 now that we an aggregated time series that is much smaller – let’s send
 this back to the local python environment off the spark cluster on Glue.
 
-.. code:: python2
+.. code:: python3
 
     %%spark -o time_series_df
 
@@ -364,7 +364,7 @@ this back to the local python environment off the spark cluster on Glue.
 we are in the local panda/python environment now
 ------------------------------------------------
 
-.. code:: python2
+.. code:: python3
 
     %%local
     time_series_df.dtypes
@@ -382,14 +382,14 @@ we are in the local panda/python environment now
 
 
 
-.. code:: python2
+.. code:: python3
 
     %%local
     import pandas as pd
     time_series_df = time_series_df.set_index('ts_resampled', drop=True)
     time_series_df = time_series_df.sort_index()
 
-.. code:: python2
+.. code:: python3
 
     %%local
     prediction_length = 12
@@ -413,7 +413,7 @@ we are in the local panda/python environment now
     end training time 2019-04-08 00:00:00
 
 
-.. code:: python2
+.. code:: python3
 
     %%local
     %matplotlib inline
@@ -450,7 +450,7 @@ we still need to pull in the FHV HV dataset starting in Feb. This
 represents the rideshare apps going to a difference licence type under
 the NYC TLC.
 
-.. code:: python2
+.. code:: python3
 
     fhvhv_data = glueContext.create_dynamic_frame.from_catalog(database=database_name, table_name="fhvhv")
     fhvhv_df = fhvhv_data.toDF().cache()
@@ -462,7 +462,7 @@ the NYC TLC.
     FloatProgress(value=0.0, bar_style='info', description='Progress:', layout=Layout(height='25px', width='50%'),…
 
 
-.. code:: python2
+.. code:: python3
 
     from pyspark.sql.functions import to_date, lit
     from pyspark.sql.types import TimestampType
@@ -495,7 +495,7 @@ the NYC TLC.
     +-----------------+--------------------+-------------------+-------------------+------------+------------+-------+
     only showing top 5 rows
 
-.. code:: python2
+.. code:: python3
 
     from pyspark.sql.functions import col, max as max_, min as min_
     
@@ -546,7 +546,7 @@ the NYC TLC.
     +----------+-----------------+--------------------+-------------------+-------------------+------------+------------+-------+-------------------+
     only showing top 10 rows
 
-.. code:: python2
+.. code:: python3
 
     from pyspark.sql import functions as func
     #count_per_day_resamples = resampled_df.groupBy(["ts_resampled", "type", "pulocationid", "dolocationid"]).count()
@@ -580,7 +580,7 @@ the NYC TLC.
     +-------------------+------+
     only showing top 10 rows
 
-.. code:: python2
+.. code:: python3
 
     %%spark -o fhvhv_timeseries_df
 
@@ -597,7 +597,7 @@ the NYC TLC.
     FloatProgress(value=0.0, bar_style='info', description='Progress:', layout=Layout(height='25px', width='50%'),…
 
 
-.. code:: python2
+.. code:: python3
 
     %%local
     fhvhv_timeseries_df = fhvhv_timeseries_df.rename(columns={"count": "fhvhv"})
@@ -610,7 +610,7 @@ When we look at the FHVHV dataset starting in Feb 1st, you can see the
 time series looks normal and there isn’t a giant drop in the dataset on
 that day.
 
-.. code:: python2
+.. code:: python3
 
     %%local
     plt.figure(figsize=[14,8]);
@@ -638,7 +638,7 @@ but now we need to combine the FHV and FHVHV dataset
 Let’s create a new dataset and call it full_fhv meaning both
 for-hire-vehicles and for-hire-vehicles high volume.
 
-.. code:: python2
+.. code:: python3
 
     %%local
     full_timeseries = time_series_df.join(fhvhv_timeseries_df)
@@ -646,7 +646,7 @@ for-hire-vehicles and for-hire-vehicles high volume.
     full_timeseries['full_fhv'] = full_timeseries['fhv'] + full_timeseries['fhvhv']
     full_timeseries = full_timeseries.drop(['fhv', 'fhvhv'], axis=1)
 
-.. code:: python2
+.. code:: python3
 
     %%local
     plt.figure(figsize=[14,8]);
@@ -667,7 +667,7 @@ for-hire-vehicles and for-hire-vehicles high volume.
 .. image:: output_34_1.png
 
 
-.. code:: python2
+.. code:: python3
 
     %%local
     plt.figure(figsize=[14,8]);
@@ -688,7 +688,7 @@ for-hire-vehicles and for-hire-vehicles high volume.
 .. image:: output_35_1.png
 
 
-.. code:: python2
+.. code:: python3
 
     %%local
     full_timeseries.isna().sum()
@@ -705,7 +705,7 @@ for-hire-vehicles and for-hire-vehicles high volume.
 
 
 
-.. code:: python2
+.. code:: python3
 
     %%local
     import json
@@ -761,7 +761,7 @@ for-hire-vehicles and for-hire-vehicles high volume.
 
 
 
-.. code:: python2
+.. code:: python3
 
     %%local
     import boto3
@@ -783,7 +783,7 @@ for-hire-vehicles and for-hire-vehicles high volume.
     Output location: sagemaker-us-east-1-783526147575/2019workshop/output
 
 
-.. code:: python2
+.. code:: python3
 
     %%local
     
@@ -800,7 +800,7 @@ for-hire-vehicles and for-hire-vehicles high volume.
         output_path="s3://" + s3_output_path
     )
 
-.. code:: python2
+.. code:: python3
 
     %%local
     hyperparameters = {
@@ -819,7 +819,7 @@ for-hire-vehicles and for-hire-vehicles high volume.
     
     estimator.set_hyperparameters(**hyperparameters)
 
-.. code:: python2
+.. code:: python3
 
     %%local
     data_channels = {
@@ -837,7 +837,7 @@ for-hire-vehicles and for-hire-vehicles high volume.
     2019-10-13 01:07:33 Starting - Preparing the instances for training...
     2019-10-13 01:08:11 Downloading - Downloading input data...
     2019-10-13 01:08:52 Training - Training image download completed. Training in progress..[31mArguments: train[0m
-    [31m[10/13/2019 01:08:54 INFO 140349257213760] Reading default configuration from /opt/amazon/lib/python2.7/site-packages/algorithm/resources/default-input.json: {u'num_dynamic_feat': u'auto', u'dropout_rate': u'0.10', u'mini_batch_size': u'128', u'test_quantiles': u'[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]', u'_tuning_objective_metric': u'', u'_num_gpus': u'auto', u'num_eval_samples': u'100', u'learning_rate': u'0.001', u'num_cells': u'40', u'num_layers': u'2', u'embedding_dimension': u'10', u'_kvstore': u'auto', u'_num_kv_servers': u'auto', u'cardinality': u'auto', u'likelihood': u'student-t', u'early_stopping_patience': u''}[0m
+    [31m[10/13/2019 01:08:54 INFO 140349257213760] Reading default configuration from /opt/amazon/lib/python3.7/site-packages/algorithm/resources/default-input.json: {u'num_dynamic_feat': u'auto', u'dropout_rate': u'0.10', u'mini_batch_size': u'128', u'test_quantiles': u'[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]', u'_tuning_objective_metric': u'', u'_num_gpus': u'auto', u'num_eval_samples': u'100', u'learning_rate': u'0.001', u'num_cells': u'40', u'num_layers': u'2', u'embedding_dimension': u'10', u'_kvstore': u'auto', u'_num_kv_servers': u'auto', u'cardinality': u'auto', u'likelihood': u'student-t', u'early_stopping_patience': u''}[0m
     [31m[10/13/2019 01:08:54 INFO 140349257213760] Reading provided configuration from /opt/ml/input/config/hyperparameters.json: {u'dropout_rate': u'0.05', u'learning_rate': u'0.001', u'num_cells': u'40', u'prediction_length': u'12', u'epochs': u'100', u'time_freq': u'7D', u'context_length': u'12', u'num_layers': u'3', u'mini_batch_size': u'32', u'likelihood': u'gaussian', u'early_stopping_patience': u'10'}[0m
     [31m[10/13/2019 01:08:54 INFO 140349257213760] Final configuration: {u'dropout_rate': u'0.05', u'test_quantiles': u'[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]', u'_tuning_objective_metric': u'', u'num_eval_samples': u'100', u'learning_rate': u'0.001', u'num_layers': u'3', u'epochs': u'100', u'embedding_dimension': u'10', u'num_cells': u'40', u'_num_kv_servers': u'auto', u'mini_batch_size': u'32', u'likelihood': u'gaussian', u'num_dynamic_feat': u'auto', u'cardinality': u'auto', u'_num_gpus': u'auto', u'prediction_length': u'12', u'time_freq': u'7D', u'context_length': u'12', u'_kvstore': u'auto', u'early_stopping_patience': u'10'}[0m
     [31mProcess 1 is a worker.[0m
@@ -1769,7 +1769,7 @@ for-hire-vehicles and for-hire-vehicles high volume.
     Billable seconds: 95
 
 
-.. code:: python2
+.. code:: python3
 
     %%local
     class DeepARPredictor(sagemaker.predictor.RealTimePredictor):
@@ -1845,7 +1845,7 @@ for-hire-vehicles and for-hire-vehicles high volume.
             obj["dynamic_feat"] = dynamic_feat        
         return obj
 
-.. code:: python2
+.. code:: python3
 
     %%local
     predictor = estimator.deploy(
@@ -1941,12 +1941,12 @@ etc, until the end of the prediction horizon. In the interactive plots
 below, we’ll see how Monte Carlo samples are able to provide us a
 confidence interval about the point estimate.
 
-.. code:: python2
+.. code:: python3
 
     %%local
     ABB = full_timeseries.asfreq('d')
 
-.. code:: python2
+.. code:: python3
 
     %%local
     print('Green Rides:')
@@ -1984,7 +1984,7 @@ confidence interval about the point estimate.
     2019-07-05  729027.3125  802756.6875  925071.3750
 
 
-.. code:: python2
+.. code:: python3
 
     %%local
     import matplotlib
@@ -2068,7 +2068,7 @@ confidence interval about the point estimate.
                 )
                 feat_ts[forecast_date-plot_history:forecast_date+prediction_length].plot(ax=ax, color='g')
 
-.. code:: python2
+.. code:: python3
 
     %%local
     from __future__ import print_function
@@ -2105,7 +2105,7 @@ confidence interval about the point estimate.
     interactive(children=(RadioButtons(description='Type', options=('full_fhv', 'yellow', 'green'), value='full_fh…
 
 
-.. code:: python2
+.. code:: python3
 
     %%local
     l = ['full_fhv', 'yellow', 'green']
