@@ -18,7 +18,7 @@ The workshop uses the following architecture:
 .. image:: images/WorkshopArchitecture.png
 
 .. toctree::
-    :numbered:
+    :maxdepth: 2
     DataDiscovery/DataDiscoveryAndConversation
 
 *********************************************************************
