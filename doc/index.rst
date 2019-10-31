@@ -18,9 +18,7 @@ The workshop uses the following architecture:
 .. image:: images/WorkshopArchitecture.png
 
 .. toctree::
-    :maxdepth: 2
-    :collapse: False
-
+    :numbered:
 
 *********************************************************************
 Crawl, Discover, and Explore the new datasets in a Data lake
