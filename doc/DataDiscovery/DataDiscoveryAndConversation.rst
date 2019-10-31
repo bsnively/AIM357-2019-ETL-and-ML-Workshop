@@ -19,7 +19,7 @@ Tables list in the AWS Glue console displays values of your table’s
 metadata. You use table definitions to specify sources and targets when
 you create ETL (extract, transform, and load) jobs.
 
-.. code:: ipython3
+.. code:: python3
 
     import boto3
     
@@ -46,7 +46,7 @@ Data Catalog tables as sources and targets. The ETL job reads from and
 writes to the data stores that are specified in the source and target
 Data Catalog tables.
 
-.. code:: ipython3
+.. code:: python3
 
     crawler_name = '2019reinventworkshopcrawler'
     create_crawler_resp = glue_client.create_crawler(
@@ -84,7 +84,7 @@ investigation.
 
 Later we’ll use Spark to do ETL and feature engineering.
 
-.. code:: ipython3
+.. code:: python3
 
     print('installing the PyAthena Drivers to perform SQL queries natively')
     print('alternatives include using the boto3 libraries or other Athena Data APIs')
@@ -103,7 +103,7 @@ Athena uses S3 to store results to allow different types of clients to
 read it and so you can go back and see the results of previous queries.
 We can set that up next:
 
-.. code:: ipython3
+.. code:: python3
 
     import sagemaker
     sagemaker_session = sagemaker.Session()
@@ -121,7 +121,7 @@ We can set that up next:
 Next we’ll create an Athena connection we can use, much like a standard
 JDBC/ODBC connection
 
-.. code:: ipython3
+.. code:: python3
 
     from pyathena import connect
     import pandas as pd
@@ -131,7 +131,7 @@ JDBC/ODBC connection
     conn = connect(s3_staging_dir="s3://" + athena_data_bucket,
                    region_name=sagemaker_session.boto_region_name)
 
-.. code:: ipython3
+.. code:: python3
 
     df = pd.read_sql('SELECT \'yellow\' type, count(*) ride_count FROM "' + database_name + '"."yellow" ' + 
                      'UNION ALL SELECT \'green\' type, count(*) ride_count FROM "' + database_name + '"."green"' +
@@ -163,7 +163,7 @@ JDBC/ODBC connection
 TODO – ADD DESCRIBE SCHEMA CALLS
 --------------------------------
 
-.. code:: ipython3
+.. code:: python3
 
     green_etl = '2019reinvent_green'
     yellow_etl = '2019reinvent_yellow'
@@ -212,7 +212,7 @@ TODO: add logic to wait until the 3 jobs finish programmatically…
 
 Now let’s look at the total counts for the aggregated information
 
-.. code:: ipython3
+.. code:: python3
 
     normalized_df = pd.read_sql('SELECT type, count(*) ride_count FROM "reinvent19"."canonical" group by type', conn)
     print(normalized_df)
@@ -245,7 +245,7 @@ Now let’s look at the total counts for the aggregated information
 .. image:: output_20_2.png
 
 
-.. code:: ipython3
+.. code:: python3
 
     query = "select type, date_trunc('day', pickup_datetime) date, count(*) cnt from reinvent19.canonical where pickup_datetime < timestamp '2099-12-31' group by type, date_trunc('day', pickup_datetime) "
     typeperday_df = pd.read_sql(query, conn)
@@ -271,7 +271,7 @@ We are expecting only 2018 and 2019 datasets here, but can see there are
 records far into the future and in the past. This represents bad data
 that we want to eliminate before we build our model.
 
-.. code:: ipython3
+.. code:: python3
 
     # Only reason we put this conditional here is so you can execute the cell multiple times
     # if you don't check, it won't find the 'date' column again and makes interacting w/ the notebook more seemless
@@ -345,7 +345,7 @@ that we want to eliminate before we build our model.
 
 
 
-.. code:: ipython3
+.. code:: python3
 
     typeperday_df.loc['2018-01-01':'2019-12-31'].plot(y='cnt')
 
@@ -375,7 +375,7 @@ happened in the ETL process
 
 Let’s find the 2 2088 records to make sure they are in the source data
 
-.. code:: ipython3
+.. code:: python3
 
     pd.read_sql("select * from reinvent19.yellow where tpep_pickup_datetime like '2088%'", conn)
 
@@ -471,7 +471,7 @@ Let’s find the 2 2088 records to make sure they are in the source data
 
 
 
-.. code:: ipython3
+.. code:: python3
 
     ## Next let's plot this per type:
     typeperday_df.loc['2018-01-01':'2019-07-30'].pivot_table(index='date', 
@@ -505,7 +505,7 @@ Services (HVFHS). This law went into effect on Feb 1, 2019
 Let’s bring the other license type and see how it affects the time
 series charts:
 
-.. code:: ipython3
+.. code:: python3
 
     query = 'select \'fhvhv\' as type, date_trunc(\'day\', cast(pickup_datetime as timestamp)) date, count(*) cnt from "2019reinventworkshop"."fhvhv" group by date_trunc(\'day\',  cast(pickup_datetime as timestamp)) '
     typeperday_fhvhv_df = pd.read_sql(query, conn)
@@ -537,7 +537,7 @@ series charts:
 .. image:: output_30_2.png
 
 
-.. code:: ipython3
+.. code:: python3
 
     pd.concat([typeperday_fhvhv_df, typeperday_df], sort=False).loc['2018-01-01':'2019-07-30'].pivot_table(index='date', 
                                                              columns='type', 
