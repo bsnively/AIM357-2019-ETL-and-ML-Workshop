@@ -23,12 +23,15 @@ Overview
 
 .. toctree::
     :maxdepth: 2
-    :collapse_navigation: False
 
     overview
 
 ********
-Overview
+External Links
 ********
 
-`CNN <http://cnn.com>`_
+You can |location_link|.
+
+.. |location_link| raw:: html
+
+   <a href="http://geoiptool.com" target="_blank">check your location here</a>
