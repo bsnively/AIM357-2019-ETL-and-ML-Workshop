@@ -25,13 +25,3 @@ Overview
     :maxdepth: 2
 
     overview
-
-********
-External Links
-********
-
-You can |location_link|.
-
-.. |location_link| raw:: html
-
-   <a href="http://geoiptool.com" target="_blank">check your location here</a>
