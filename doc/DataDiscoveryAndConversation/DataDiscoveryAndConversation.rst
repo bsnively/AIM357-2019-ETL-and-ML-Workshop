@@ -64,9 +64,13 @@ After starting the crawler, you can go to the glue console if you’d like
 to see it running.
 
 https://console.aws.amazon.com/glue/home?region=us-east-1#catalog:tab=crawlers
+|startcrawlerui|
 
 After it finishes crawling, you can see the datasets (represeted as
-“tables”) it automatically discovered.
+“tables”) it automatically discovered. |crawler_discovered|
+
+.. |startcrawlerui| image:: images/startcrawlerui.png
+.. |crawler_discovered| image:: images/crawler_discovered.png
 
 Quering the data
 ----------------
@@ -483,8 +487,8 @@ Let’s find the 2 2088 records to make sure they are in the source data
 .. image:: output_26_1.png
 
 
-Let’s bring in the other fhvhv data since the new law went into affect
-----------------------------------------------------------------------
+Fixing our Time Series data
+---------------------------
 
 Some details of what caused this drop: #### On August 14, 2018, Mayor de
 Blasio signed Local Law 149 of 2018, creating a new license category for
