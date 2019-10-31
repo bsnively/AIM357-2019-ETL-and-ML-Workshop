@@ -4,14 +4,6 @@ Data Discover and Transformation
 in this section of the lab, we’ll use Glue to discover new
 transprotation data
 
-ASSUMPTION:
-~~~~~~~~~~~
-
-1. GlueRole is created in cloudformation
-2. Notebook role has access to perform glue and athena query functions
-   (in addition to the otherones)
-3. Run all 3 ETLs at the same time with Standard and 5 workers.
-
 A table in the AWS Glue Data Catalog is the metadata definition that
 represents the data in a data store. You create tables when you run a
 crawler, or you can create a table manually in the AWS Glue console. The
@@ -35,7 +27,9 @@ you create ETL (extract, transform, and load) jobs.
     )
 
 This will create a new database, or namespace, that can hold the
-collection of tables
+collection of tables |create db response|
+
+.. |create db response| image:: images/createdatabaseresponse.png
 
 You can use a crawler to populate the AWS Glue Data Catalog with tables.
 This is the primary method used by most AWS Glue users. A crawler can
@@ -157,11 +151,8 @@ JDBC/ODBC connection
 
 
 
-.. image:: output_14_2.png
+.. image:: output_13_2.png
 
-
-TODO – ADD DESCRIBE SCHEMA CALLS
---------------------------------
 
 .. code:: python3
 
@@ -207,8 +198,8 @@ TODO – ADD DESCRIBE SCHEMA CALLS
 
 after kicking it off, you can see it running in the console too:
 
-TODO: add logic to wait until the 3 jobs finish programmatically…
------------------------------------------------------------------
+Let’s now wait until the jobs finish
+------------------------------------
 
 Now let’s look at the total counts for the aggregated information
 
@@ -242,7 +233,7 @@ Now let’s look at the total counts for the aggregated information
 
 
 
-.. image:: output_20_2.png
+.. image:: output_18_2.png
 
 
 .. code:: python3
@@ -261,7 +252,7 @@ Now let’s look at the total counts for the aggregated information
 
 
 
-.. image:: output_21_1.png
+.. image:: output_19_1.png
 
 
 We see some bad data here…
@@ -359,7 +350,7 @@ that we want to eliminate before we build our model.
 
 
 
-.. image:: output_24_1.png
+.. image:: output_22_1.png
 
 
 Let’s look at some of the bad data now:
@@ -489,7 +480,7 @@ Let’s find the 2 2088 records to make sure they are in the source data
 
 
 
-.. image:: output_28_1.png
+.. image:: output_26_1.png
 
 
 Let’s bring in the other fhvhv data since the new law went into affect
@@ -534,7 +525,7 @@ series charts:
 
 
 
-.. image:: output_30_2.png
+.. image:: output_28_2.png
 
 
 .. code:: python3
@@ -554,7 +545,7 @@ series charts:
 
 
 
-.. image:: output_31_1.png
+.. image:: output_29_1.png
 
 
 That looks better – let’s start looking at performing EDA now.
