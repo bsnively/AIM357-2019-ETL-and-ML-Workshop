@@ -19,6 +19,14 @@ The workshop uses the following architecture:
 
 .. toctree::
     :maxdepth: 2
+    
+****************
+Notebooks
+****************
+
+.. toctree::
+    :maxdepth: 2
+
     DataDiscovery/DataDiscoveryAndConversation
 
 *********************************************************************
