@@ -1,5 +1,5 @@
 Feature Engineering and Training our Model
-------------------------------------------
+==========================================
 
 We’ll first setup the glue context in which we can read the glue data
 catalog, as well as setup some constants.
@@ -17,29 +17,6 @@ catalog, as well as setup some constants.
     
     database_name = "reinvent19"
     canonical_table_name = "canonical"
-
-
-.. parsed-literal::
-
-    Starting Spark application
-
-
-
-.. raw:: html
-
-    <table>
-    <tr><th>ID</th><th>YARN Application ID</th><th>Kind</th><th>State</th><th>Spark UI</th><th>Driver log</th><th>Current session?</th></tr><tr><td>9</td><td>application_1570414361246_0010</td><td>pyspark</td><td>idle</td><td><a target="_blank" href="http://ip-172-32-157-157.ec2.internal:20888/proxy/application_1570414361246_0010/">Link</a></td><td><a target="_blank" href="http://ip-172-32-156-106.ec2.internal:8042/node/containerlogs/container_1570414361246_0010_01_000001/livy">Link</a></td><td>✔</td></tr></table>
-
-
-
-.. parsed-literal::
-
-    FloatProgress(value=0.0, bar_style='info', description='Progress:', layout=Layout(height='25px', width='50%'),…
-
-
-.. parsed-literal::
-
-    SparkSession available as 'spark'.
 
 
 
@@ -71,36 +48,17 @@ Here we can see there are **500 million** records
 
 .. parsed-literal::
 
-    2018/2019 Taxi Data Count:  452091107
+    2018/2019 Taxi Data Count:  4634941576
     root
+    |-- vendorid: string
     |-- pickup_datetime: timestamp
     |-- dropoff_datetime: timestamp
     |-- pulocationid: long
     |-- dolocationid: long
     |-- type: string
-    |-- vendorid: string
-
-DeepAR in SageMaker
--------------------
-
-The algorithm expects different formats, we’ll use the JSON format here.
-
-The records in your input files should contain the following fields:
-
-::
-
-   start—A string with the format YYYY-MM-DD HH:MM:SS. The start timestamp can't contain time zone information.
-
-   target—An array of floating-point values or integers that represent the time series. You can encode missing values as null literals, or as "NaN" strings in JSON, or as nan floating-point values in Parquet.
-
-   dynamic_feat (optional)—An array of arrays of floating-point values or integers that represents the vector of custom feature time series (dynamic features). If you set this field, all records must have the same number of inner arrays (the same number of feature time series). In addition, each inner array must have the same length as the associated target value. Missing values are not supported in the features. For example, if target time series represents the demand of different products, an associated dynamic_feat might be a boolean time-series which indicates whether a promotion was applied (1) to the particular product or not (0):
-
-   {"start": ..., "target": [1, 5, 10, 2], "dynamic_feat": [[0, 1, 1, 0]]}
-
-   cat (optional)—An array of categorical features that can be used to encode the groups that the record belongs to. Categorical features must be encoded as a 0-based sequence of positive integers. For example, the categorical domain {R, G, B} can be encoded as {0, 1, 2}. All values from each categorical domain must be represented in the training dataset. That's because the DeepAR algorithm can forecast only for categories that have been observed during training. And, each categorical feature is embedded in a low-dimensional space whose dimensionality is controlled by the embedding_dimension hyperparameter. For more information, see DeepAR Hyperparameters.
 
 Caching in Spark
-----------------
+~~~~~~~~~~~~~~~~
 
 We’ll use the taxi dataframe a bit repeatitively, so we’ll cache it ehre
 and show some sample records.
@@ -110,53 +68,8 @@ and show some sample records.
     df = taxi_data.toDF().cache()
     df.show(30, False)
 
-
-
-.. parsed-literal::
-
-    FloatProgress(value=0.0, bar_style='info', description='Progress:', layout=Layout(height='25px', width='50%'),…
-
-
-.. parsed-literal::
-
-    +-------------------+----------------+------------+------------+----+--------+
-    |pickup_datetime    |dropoff_datetime|pulocationid|dolocationid|type|vendorid|
-    +-------------------+----------------+------------+------------+----+--------+
-    |2018-01-30 21:15:34|null            |129         |null        |fhv |fhv     |
-    |2018-01-30 21:35:29|null            |112         |null        |fhv |fhv     |
-    |2018-01-30 21:16:34|null            |42          |null        |fhv |fhv     |
-    |2018-01-30 21:40:35|null            |131         |null        |fhv |fhv     |
-    |2018-01-30 21:49:59|null            |121         |null        |fhv |fhv     |
-    |2018-01-30 21:44:55|null            |235         |null        |fhv |fhv     |
-    |2018-01-30 21:51:30|null            |235         |null        |fhv |fhv     |
-    |2018-01-30 22:15:28|null            |208         |null        |fhv |fhv     |
-    |2018-01-30 21:46:49|null            |265         |null        |fhv |fhv     |
-    |2018-01-30 21:35:23|null            |29          |null        |fhv |fhv     |
-    |2018-01-30 21:49:52|null            |21          |null        |fhv |fhv     |
-    |2018-01-30 22:02:50|null            |null        |null        |fhv |fhv     |
-    |2018-01-30 21:44:27|null            |null        |null        |fhv |fhv     |
-    |2018-01-30 21:57:04|null            |null        |null        |fhv |fhv     |
-    |2018-01-30 22:03:41|null            |null        |null        |fhv |fhv     |
-    |2018-01-30 22:29:58|null            |null        |null        |fhv |fhv     |
-    |2018-01-30 21:40:41|null            |null        |null        |fhv |fhv     |
-    |2018-01-30 21:54:57|null            |null        |null        |fhv |fhv     |
-    |2018-01-30 22:02:23|null            |null        |null        |fhv |fhv     |
-    |2018-01-30 21:28:14|null            |null        |null        |fhv |fhv     |
-    |2018-01-30 21:19:21|null            |null        |null        |fhv |fhv     |
-    |2018-01-30 22:07:34|null            |null        |null        |fhv |fhv     |
-    |2018-01-30 21:55:52|null            |64          |null        |fhv |fhv     |
-    |2018-01-30 21:10:04|null            |79          |null        |fhv |fhv     |
-    |2018-01-30 21:19:03|null            |4           |null        |fhv |fhv     |
-    |2018-01-30 21:34:12|null            |87          |null        |fhv |fhv     |
-    |2018-01-30 22:01:18|null            |37          |null        |fhv |fhv     |
-    |2018-01-30 21:20:38|null            |33          |null        |fhv |fhv     |
-    |2018-01-30 22:08:48|null            |78          |null        |fhv |fhv     |
-    |2018-01-30 22:47:18|null            |265         |null        |fhv |fhv     |
-    +-------------------+----------------+------------+------------+----+--------+
-    only showing top 30 rows
-
 Removing invalid dates
-----------------------
+~~~~~~~~~~~~~~~~~~~~~~
 
 When we originally looked at this data, we saw that it had a lot of bad
 data in it, and timestamps that were outside the range that are valid.
@@ -184,8 +97,8 @@ We need to restructure this so that each time is a single row, and the
 time series values are in the series, followed by the numerical and
 categorical features
 
-Creating our time series, from the individual records
------------------------------------------------------
+Creating our time series (from individual records)
+--------------------------------------------------
 
 Right now they are individual records down to the second level, we’ll
 create a record at the day level for each record and then
@@ -245,7 +158,7 @@ Let’s start by adding a ts_resampled column
     only showing top 10 rows
 
 Creating our time series data
------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 You can see now that we are resampling per day the resample column, in
 which we can now aggregate across.
@@ -282,9 +195,6 @@ which we can now aggregate across.
     |2019-03-07 00:00:00|yellow|291098|
     +-------------------+------+------+
     only showing top 10 rows
-
-TODO – Right now the “null” column is showing up instead of the fhvhv.
-----------------------------------------------------------------------
 
 .. code:: python3
 
@@ -362,7 +272,7 @@ this back to the local python environment off the spark cluster on Glue.
 
 
 we are in the local panda/python environment now
-------------------------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code:: python3
 
@@ -440,11 +350,11 @@ we are in the local panda/python environment now
 
 
 
-.. image:: output_22_0.png
+.. image:: output_20_0.png
 
 
-Odd drop that we saw before
----------------------------
+Cleaning our Time Series
+------------------------
 
 we still need to pull in the FHV HV dataset starting in Feb. This
 represents the rideshare apps going to a difference licence type under
@@ -629,7 +539,7 @@ that day.
 
 
 
-.. image:: output_31_1.png
+.. image:: output_29_1.png
 
 
 but now we need to combine the FHV and FHVHV dataset
@@ -664,7 +574,7 @@ for-hire-vehicles and for-hire-vehicles high volume.
 
 
 
-.. image:: output_34_1.png
+.. image:: output_32_1.png
 
 
 .. code:: python3
@@ -685,7 +595,7 @@ for-hire-vehicles and for-hire-vehicles high volume.
 
 
 
-.. image:: output_35_1.png
+.. image:: output_33_1.png
 
 
 .. code:: python3
@@ -1860,8 +1770,8 @@ for-hire-vehicles and for-hire-vehicles high volume.
 
     ---------------------------------------------------------------------------------------------------!
 
-…. To read while the endpoint is deploying….
---------------------------------------------
+DeepAR Deep Dive
+----------------
 
 Let’s elaborate on the DeepAR model’s architecture by walking through an
 example. When interested in quantifying the confidence of the estimates
@@ -2135,7 +2045,7 @@ confidence interval about the point estimate.
 
 
 
-.. image:: output_49_2.png
+.. image:: output_47_2.png
 
 
 
@@ -2145,7 +2055,7 @@ confidence interval about the point estimate.
 
 
 
-.. image:: output_49_4.png
+.. image:: output_47_4.png
 
 
 
@@ -2155,6 +2065,6 @@ confidence interval about the point estimate.
 
 
 
-.. image:: output_49_6.png
+.. image:: output_47_6.png
 
 
