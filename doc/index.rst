@@ -19,6 +19,7 @@ The workshop uses the following architecture:
 
 .. toctree::
     :numbered:
+    DataDiscovery/DataDiscoveryAndConversation
 
 *********************************************************************
 Crawl, Discover, and Explore the new datasets in a Data lake
