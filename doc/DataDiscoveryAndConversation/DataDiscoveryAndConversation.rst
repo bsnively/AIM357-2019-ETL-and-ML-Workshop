@@ -2,7 +2,26 @@ Data Discover and Transformation
 ================================
 
 in this section of the lab, we’ll use Glue to discover new
-transprotation data
+transportation data. From there, we’ll use Athena to query and start
+looking into the dataset to understand the data we are dealing with.
+
+We’ve also setup a set of ETLs using Glue to create the fields into a
+canonical form, since all the fields call names different things.
+
+After understanding the data, and cleaning it a little, we’ll go into
+another notebook to perform feature engineering and time series
+modeling.
+
+What are Databases and Tables in Glue:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When you define a table in the AWS Glue Data Catalog, you add it to a
+database. A database is used to organize tables in AWS Glue. You can
+organize your tables using a crawler or using the AWS Glue console. A
+table can be in only one database at a time.
+
+Your database can contain tables that define data from many different
+data stores.
 
 A table in the AWS Glue Data Catalog is the metadata definition that
 represents the data in a data store. You create tables when you run a
@@ -11,7 +30,7 @@ Tables list in the AWS Glue console displays values of your table’s
 metadata. You use table definitions to specify sources and targets when
 you create ETL (extract, transform, and load) jobs.
 
-.. code:: python3
+.. code:: ipython3
 
     import boto3
     
@@ -27,9 +46,14 @@ you create ETL (extract, transform, and load) jobs.
     )
 
 This will create a new database, or namespace, that can hold the
-collection of tables |create db response|
+collection of tables
 
-.. |create db response| image:: images/createdatabaseresponse.png
+https://console.aws.amazon.com/glue/home?region=us-east-1#catalog:tab=databases
+
+.. figure:: images/createdatabaseresponse.png
+   :alt: create db response
+
+   create db response
 
 You can use a crawler to populate the AWS Glue Data Catalog with tables.
 This is the primary method used by most AWS Glue users. A crawler can
@@ -40,7 +64,7 @@ Data Catalog tables as sources and targets. The ETL job reads from and
 writes to the data stores that are specified in the source and target
 Data Catalog tables.
 
-.. code:: python3
+.. code:: ipython3
 
     crawler_name = '2019reinventworkshopcrawler'
     create_crawler_resp = glue_client.create_crawler(
@@ -51,7 +75,7 @@ Data Catalog tables.
         Targets={
             'S3Targets': [
                 {
-                    'Path': 's3://serverless-analytics/reinvent-2019/',
+                    'Path': 's3://serverless-analytics/reinvent-2019/taxi_data/',
                 },
             ]
         }
@@ -72,6 +96,37 @@ After it finishes crawling, you can see the datasets (represeted as
 .. |startcrawlerui| image:: images/startcrawlerui.png
 .. |crawler_discovered| image:: images/crawler_discovered.png
 
+Waiting for the Crawler to finish
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code:: ipython3
+
+    import time
+     
+    response = glue_client.get_crawler(
+        Name=crawler_name
+    )
+    while (response['Crawler']['State'] == 'RUNNING') | (response['Crawler']['State'] == 'STOPPING'):
+        print(response['Crawler']['State'])
+        # Wait for 40 seconds
+        time.sleep(40)
+        
+        response = glue_client.get_crawler(
+            Name=crawler_name
+        )
+    
+    print('finished running', response['Crawler']['State'])
+
+
+.. parsed-literal::
+
+    RUNNING
+    RUNNING
+    STOPPING
+    STOPPING
+    finished running
+
+
 Quering the data
 ----------------
 
@@ -82,44 +137,25 @@ investigation.
 
 Later we’ll use Spark to do ETL and feature engineering.
 
-.. code:: python3
+.. code:: ipython3
 
-    print('installing the PyAthena Drivers to perform SQL queries natively')
-    print('alternatives include using the boto3 libraries or other Athena Data APIs')
+    !pip install --upgrade pip > /dev/null
     !pip install PyAthena > /dev/null
-
-
-.. parsed-literal::
-
-    installing the PyAthena Drivers to perform SQL queries natively
-    alternatives include using the boto3 libraries or other Athena Data APIs
-    [33mYou are using pip version 10.0.1, however version 19.2.3 is available.
-    You should consider upgrading via the 'pip install --upgrade pip' command.[0m
-
 
 Athena uses S3 to store results to allow different types of clients to
 read it and so you can go back and see the results of previous queries.
 We can set that up next:
 
-.. code:: python3
+.. code:: ipython3
 
     import sagemaker
     sagemaker_session = sagemaker.Session()
     athena_data_bucket = sagemaker_session.default_bucket()
-    print('using the athena data bucket:', athena_data_bucket)
-    print('running in region: ', sagemaker_session.boto_region_name)
-
-
-.. parsed-literal::
-
-    using the athena data bucket: sagemaker-us-east-1-783526147575
-    running in region:  us-east-1
-
 
 Next we’ll create an Athena connection we can use, much like a standard
 JDBC/ODBC connection
 
-.. code:: python3
+.. code:: ipython3
 
     from pyathena import connect
     import pandas as pd
@@ -128,9 +164,7 @@ JDBC/ODBC connection
     
     conn = connect(s3_staging_dir="s3://" + athena_data_bucket,
                    region_name=sagemaker_session.boto_region_name)
-
-.. code:: python3
-
+    
     df = pd.read_sql('SELECT \'yellow\' type, count(*) ride_count FROM "' + database_name + '"."yellow" ' + 
                      'UNION ALL SELECT \'green\' type, count(*) ride_count FROM "' + database_name + '"."green"' +
                      'UNION ALL SELECT \'fhv\' type, count(*) ride_count FROM "' + database_name + '"."fhv"', conn)
@@ -141,24 +175,24 @@ JDBC/ODBC connection
 .. parsed-literal::
 
          type  ride_count
-    0     fhv    31956302
-    1  yellow    44459136
-    2   green     3298036
+    0   green    12105351
+    1  yellow   147263398
+    2     fhv   292722358
 
 
 
 
 .. parsed-literal::
 
-    <matplotlib.axes._subplots.AxesSubplot at 0x7f8df56cd320>
+    <matplotlib.axes._subplots.AxesSubplot at 0x7fbb8b72cd68>
 
 
 
 
-.. image:: output_13_2.png
+.. image:: output_14_2.png
 
 
-.. code:: python3
+.. code:: ipython3
 
     green_etl = '2019reinvent_green'
     yellow_etl = '2019reinvent_yellow'
@@ -189,17 +223,6 @@ JDBC/ODBC connection
     print(response)
 
 
-
-.. parsed-literal::
-
-    response from starting green
-    {'JobRunId': 'jr_926f737715e81c82b226c161143d6c6782faad6b34f8a22e4cd446613b3e2170', 'ResponseMetadata': {'RequestId': '6a0da0e4-e84b-11e9-9e2f-abe21cc8b0d0', 'HTTPStatusCode': 200, 'HTTPHeaders': {'date': 'Sun, 06 Oct 2019 15:10:21 GMT', 'content-type': 'application/x-amz-json-1.1', 'content-length': '82', 'connection': 'keep-alive', 'x-amzn-requestid': '6a0da0e4-e84b-11e9-9e2f-abe21cc8b0d0'}, 'RetryAttempts': 0}}
-    response from starting yellow
-    {'JobRunId': 'jr_66979272ac47f8ae88b1f36b42c1d80f4fb02b35e2e037f4497d4f897efb557a', 'ResponseMetadata': {'RequestId': '6a20b373-e84b-11e9-9f07-178aedbcc476', 'HTTPStatusCode': 200, 'HTTPHeaders': {'date': 'Sun, 06 Oct 2019 15:10:21 GMT', 'content-type': 'application/x-amz-json-1.1', 'content-length': '82', 'connection': 'keep-alive', 'x-amzn-requestid': '6a20b373-e84b-11e9-9f07-178aedbcc476'}, 'RetryAttempts': 0}}
-    response from starting fhv
-    {'JobRunId': 'jr_f598cfba55e94fbdb4d5f201edf3955d051c1eb384266f4d4f5493c5e5b32462', 'ResponseMetadata': {'RequestId': '6a3d3ce9-e84b-11e9-b87e-a1291b93cd8a', 'HTTPStatusCode': 200, 'HTTPHeaders': {'date': 'Sun, 06 Oct 2019 15:10:21 GMT', 'content-type': 'application/x-amz-json-1.1', 'content-length': '82', 'connection': 'keep-alive', 'x-amzn-requestid': '6a3d3ce9-e84b-11e9-b87e-a1291b93cd8a'}, 'RetryAttempts': 0}}
-
-
 after kicking it off, you can see it running in the console too:
 
 Let’s now wait until the jobs finish
@@ -207,7 +230,7 @@ Let’s now wait until the jobs finish
 
 Now let’s look at the total counts for the aggregated information
 
-.. code:: python3
+.. code:: ipython3
 
     normalized_df = pd.read_sql('SELECT type, count(*) ride_count FROM "reinvent19"."canonical" group by type', conn)
     print(normalized_df)
@@ -237,10 +260,10 @@ Now let’s look at the total counts for the aggregated information
 
 
 
-.. image:: output_18_2.png
+.. image:: output_19_2.png
 
 
-.. code:: python3
+.. code:: ipython3
 
     query = "select type, date_trunc('day', pickup_datetime) date, count(*) cnt from reinvent19.canonical where pickup_datetime < timestamp '2099-12-31' group by type, date_trunc('day', pickup_datetime) "
     typeperday_df = pd.read_sql(query, conn)
@@ -256,7 +279,7 @@ Now let’s look at the total counts for the aggregated information
 
 
 
-.. image:: output_19_1.png
+.. image:: output_20_1.png
 
 
 We see some bad data here…
@@ -266,7 +289,7 @@ We are expecting only 2018 and 2019 datasets here, but can see there are
 records far into the future and in the past. This represents bad data
 that we want to eliminate before we build our model.
 
-.. code:: python3
+.. code:: ipython3
 
     # Only reason we put this conditional here is so you can execute the cell multiple times
     # if you don't check, it won't find the 'date' column again and makes interacting w/ the notebook more seemless
@@ -340,7 +363,7 @@ that we want to eliminate before we build our model.
 
 
 
-.. code:: python3
+.. code:: ipython3
 
     typeperday_df.loc['2018-01-01':'2019-12-31'].plot(y='cnt')
 
@@ -354,7 +377,7 @@ that we want to eliminate before we build our model.
 
 
 
-.. image:: output_22_1.png
+.. image:: output_23_1.png
 
 
 Let’s look at some of the bad data now:
@@ -370,7 +393,7 @@ happened in the ETL process
 
 Let’s find the 2 2088 records to make sure they are in the source data
 
-.. code:: python3
+.. code:: ipython3
 
     pd.read_sql("select * from reinvent19.yellow where tpep_pickup_datetime like '2088%'", conn)
 
@@ -466,7 +489,7 @@ Let’s find the 2 2088 records to make sure they are in the source data
 
 
 
-.. code:: python3
+.. code:: ipython3
 
     ## Next let's plot this per type:
     typeperday_df.loc['2018-01-01':'2019-07-30'].pivot_table(index='date', 
@@ -484,7 +507,7 @@ Let’s find the 2 2088 records to make sure they are in the source data
 
 
 
-.. image:: output_26_1.png
+.. image:: output_27_1.png
 
 
 Fixing our Time Series data
@@ -500,7 +523,7 @@ Services (HVFHS). This law went into effect on Feb 1, 2019
 Let’s bring the other license type and see how it affects the time
 series charts:
 
-.. code:: python3
+.. code:: ipython3
 
     query = 'select \'fhvhv\' as type, date_trunc(\'day\', cast(pickup_datetime as timestamp)) date, count(*) cnt from "2019reinventworkshop"."fhvhv" group by date_trunc(\'day\',  cast(pickup_datetime as timestamp)) '
     typeperday_fhvhv_df = pd.read_sql(query, conn)
@@ -529,10 +552,10 @@ series charts:
 
 
 
-.. image:: output_28_2.png
+.. image:: output_29_2.png
 
 
-.. code:: python3
+.. code:: ipython3
 
     pd.concat([typeperday_fhvhv_df, typeperday_df], sort=False).loc['2018-01-01':'2019-07-30'].pivot_table(index='date', 
                                                              columns='type', 
@@ -549,7 +572,7 @@ series charts:
 
 
 
-.. image:: output_29_1.png
+.. image:: output_30_1.png
 
 
 That looks better – let’s start looking at performing EDA now.
