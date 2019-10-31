@@ -17,8 +17,6 @@ The workshop uses the following architecture:
 
 .. image:: images/WorkshopArchitecture.png
 
-
-    
 ****************
 Notebooks
 ****************
@@ -26,6 +24,6 @@ Notebooks
 .. toctree::
     :maxdepth: 2
 
-    DataDiscovery/DataDiscoveryAndConversation
+    DataDiscoveryAndConversation/DataDiscoveryAndConversation
     GluePySparkMLFeatureEngineering/GluePySparkMLFeatureEngineering
 
