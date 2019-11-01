@@ -195,8 +195,6 @@ JDBC/ODBC connection
 .. code:: python3
 
     green_etl = '2019reinvent_green'
-    yellow_etl = '2019reinvent_yellow'
-    fhv_etl = '2019reinvent_fhv'
     
     response = glue_client.start_job_run(
         JobName=green_etl,
@@ -205,34 +203,69 @@ JDBC/ODBC connection
     )
     print('response from starting green')
     print(response)
-    
-    response = glue_client.start_job_run(
-        JobName=yellow_etl,
-        WorkerType='Standard', # other options include: 'G.1X'|'G.2X',
-        NumberOfWorkers=5
-    )
-    print('response from starting yellow')
-    print(response)
-    
-    response = glue_client.start_job_run(
-        JobName=fhv_etl,
-        WorkerType='Standard', # other options include: 'G.1X'|'G.2X',
-        NumberOfWorkers=5
-    )
-    print('response from starting fhv')
-    print(response)
-
 
 after kicking it off, you can see it running in the console too:
 
-Let’s now wait until the jobs finish
-------------------------------------
+.. code:: python3
+
+    normalized_bucket = 's3://reinvent-snively-2019-lab/canonical/'
+    
+    create_crawler_resp = glue_client.create_crawler(
+        Name=crawler_name + '_normalized',
+        Role='GlueRole',
+        DatabaseName=database_name,
+        Description='Crawler to discover the base tables for the workshop',
+        Targets={
+            'S3Targets': [
+                {
+                    'Path': normalized_bucket,
+                },
+            ]
+        }
+    )
+    response = glue_client.start_crawler(
+        Name=crawler_name + '_normalized'
+    )
+
+
+Let’s wait for the next crawler to finish, this will discover the normalized dataset.
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code:: python3
+
+    import time
+     
+    response = glue_client.get_crawler(
+        Name=crawler_name + '_normalized'
+    )
+    while (response['Crawler']['State'] == 'RUNNING') | (response['Crawler']['State'] == 'STOPPING'):
+        print(response['Crawler']['State'])
+        # Wait for 40 seconds
+        time.sleep(40)
+        
+        response = glue_client.get_crawler(
+            Name=crawler_name + '_normalized'
+        )
+    
+    print('finished running', response['Crawler']['State'])
+
+
+.. parsed-literal::
+
+    RUNNING
+    STOPPING
+    STOPPING
+    finished running READY
+
+
+Querying the Normalized Data
+----------------------------
 
 Now let’s look at the total counts for the aggregated information
 
 .. code:: python3
 
-    normalized_df = pd.read_sql('SELECT type, count(*) ride_count FROM "reinvent19"."canonical" group by type', conn)
+    normalized_df = pd.read_sql('SELECT type, count(*) ride_count FROM "' + database_name + '"."canonical" group by type', conn)
     print(normalized_df)
     normalized_df.plot.bar(x='type', y='ride_count')
     #
@@ -246,26 +279,26 @@ Now let’s look at the total counts for the aggregated information
 .. parsed-literal::
 
          type  ride_count
-    0   green     3298036
-    1     fhv    31956302
-    2  yellow    44459136
+    0  yellow   147263398
+    1     fhv   292722358
+    2   green    12105351
 
 
 
 
 .. parsed-literal::
 
-    <matplotlib.axes._subplots.AxesSubplot at 0x7f8df5522e80>
+    <matplotlib.axes._subplots.AxesSubplot at 0x7fbb8b9fdda0>
 
 
 
 
-.. image:: output_19_2.png
+.. image:: output_22_2.png
 
 
 .. code:: python3
 
-    query = "select type, date_trunc('day', pickup_datetime) date, count(*) cnt from reinvent19.canonical where pickup_datetime < timestamp '2099-12-31' group by type, date_trunc('day', pickup_datetime) "
+    query = "select type, date_trunc('day', pickup_datetime) date, count(*) cnt from \"" + database_name + "\".canonical where pickup_datetime < timestamp '2099-12-31' group by type, date_trunc(\'day\', pickup_datetime) "
     typeperday_df = pd.read_sql(query, conn)
     typeperday_df.plot(x='date', y='cnt')
 
@@ -274,12 +307,12 @@ Now let’s look at the total counts for the aggregated information
 
 .. parsed-literal::
 
-    <matplotlib.axes._subplots.AxesSubplot at 0x7f8dec5f9748>
+    <matplotlib.axes._subplots.AxesSubplot at 0x7fbb8bd4e160>
 
 
 
 
-.. image:: output_20_1.png
+.. image:: output_23_1.png
 
 
 We see some bad data here…
@@ -298,6 +331,11 @@ that we want to eliminate before we build our model.
         typeperday_df = typeperday_df.set_index('date', drop=True)
         
     typeperday_df.head()
+
+
+.. parsed-literal::
+
+    setting index to date
 
 
 
@@ -333,29 +371,29 @@ that we want to eliminate before we build our model.
       </thead>
       <tbody>
         <tr>
-          <th>2019-06-19</th>
+          <th>2018-12-09</th>
+          <td>green</td>
+          <td>20401</td>
+        </tr>
+        <tr>
+          <th>2018-08-29</th>
+          <td>green</td>
+          <td>21671</td>
+        </tr>
+        <tr>
+          <th>2019-02-09</th>
+          <td>fhv</td>
+          <td>56647</td>
+        </tr>
+        <tr>
+          <th>2018-10-19</th>
+          <td>green</td>
+          <td>25717</td>
+        </tr>
+        <tr>
+          <th>2019-09-17</th>
           <td>yellow</td>
-          <td>246680</td>
-        </tr>
-        <tr>
-          <th>2018-05-01</th>
-          <td>green</td>
-          <td>25151</td>
-        </tr>
-        <tr>
-          <th>2018-07-28</th>
-          <td>green</td>
-          <td>24194</td>
-        </tr>
-        <tr>
-          <th>2019-03-09</th>
-          <td>fhv</td>
-          <td>38356</td>
-        </tr>
-        <tr>
-          <th>2019-06-05</th>
-          <td>fhv</td>
-          <td>67823</td>
+          <td>3</td>
         </tr>
       </tbody>
     </table>
@@ -372,12 +410,12 @@ that we want to eliminate before we build our model.
 
 .. parsed-literal::
 
-    <matplotlib.axes._subplots.AxesSubplot at 0x7f8dec2c1198>
+    <matplotlib.axes._subplots.AxesSubplot at 0x7fbb8c6a6f60>
 
 
 
 
-.. image:: output_23_1.png
+.. image:: output_26_1.png
 
 
 Let’s look at some of the bad data now:
@@ -395,7 +433,7 @@ Let’s find the 2 2088 records to make sure they are in the source data
 
 .. code:: python3
 
-    pd.read_sql("select * from reinvent19.yellow where tpep_pickup_datetime like '2088%'", conn)
+    pd.read_sql("select * from \"" + database_name + "\".yellow where tpep_pickup_datetime like '2088%'", conn)
 
 
 
@@ -502,12 +540,12 @@ Let’s find the 2 2088 records to make sure they are in the source data
 
 .. parsed-literal::
 
-    <matplotlib.axes._subplots.AxesSubplot at 0x7f8dec40ae48>
+    <matplotlib.axes._subplots.AxesSubplot at 0x7fbb8c99db00>
 
 
 
 
-.. image:: output_27_1.png
+.. image:: output_30_1.png
 
 
 Fixing our Time Series data
@@ -525,7 +563,59 @@ series charts:
 
 .. code:: python3
 
-    query = 'select \'fhvhv\' as type, date_trunc(\'day\', cast(pickup_datetime as timestamp)) date, count(*) cnt from "2019reinventworkshop"."fhvhv" group by date_trunc(\'day\',  cast(pickup_datetime as timestamp)) '
+    create_crawler_resp = glue_client.create_crawler(
+        Name=crawler_name + '_fhvhv',
+        Role='GlueRole',
+        DatabaseName=database_name,
+        Description='Crawler to discover the base tables for the workshop',
+        Targets={
+            'S3Targets': [
+                {
+                    'Path': 's3://serverless-analytics/reinvent-2019_moredata/taxi_data/fhvhv/',
+                },
+            ]
+        }
+    )
+    response = glue_client.start_crawler(
+        Name=crawler_name + '_fhvhv'
+    )
+    
+
+
+wait to discover the fhvhv dataset…
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code:: python3
+
+    import time
+     
+    response = glue_client.get_crawler(
+        Name=crawler_name + '_fhvhv'
+    )
+    while (response['Crawler']['State'] == 'RUNNING') | (response['Crawler']['State'] == 'STOPPING'):
+        print(response['Crawler']['State'])
+        # Wait for 40 seconds
+        time.sleep(40)
+        
+        response = glue_client.get_crawler(
+            Name=crawler_name + '_fhvhv'
+        )
+    
+    print('finished running', response['Crawler']['State'])
+
+
+.. parsed-literal::
+
+    RUNNING
+    RUNNING
+    STOPPING
+    STOPPING
+    finished running READY
+
+
+.. code:: python3
+
+    query = 'select \'fhvhv\' as type, date_trunc(\'day\', cast(pickup_datetime as timestamp)) date, count(*) cnt from "' + database_name + '"."fhvhv" group by date_trunc(\'day\',  cast(pickup_datetime as timestamp)) '
     typeperday_fhvhv_df = pd.read_sql(query, conn)
     typeperday_fhvhv_df = typeperday_fhvhv_df.set_index('date', drop=True)
     print(typeperday_fhvhv_df.head())
@@ -536,23 +626,23 @@ series charts:
 
                  type     cnt
     date                     
-    2019-05-05  fhvhv  854333
-    2019-03-08  fhvhv  853746
-    2019-03-22  fhvhv  846827
-    2019-05-12  fhvhv  857727
-    2019-06-25  fhvhv  651649
+    2019-02-18  fhvhv  595367
+    2019-02-25  fhvhv  657598
+    2019-02-22  fhvhv  774664
+    2019-04-23  fhvhv  600870
+    2019-05-23  fhvhv  698940
 
 
 
 
 .. parsed-literal::
 
-    <matplotlib.axes._subplots.AxesSubplot at 0x7f8debb63128>
+    <matplotlib.axes._subplots.AxesSubplot at 0x7fbb8bc8a278>
 
 
 
 
-.. image:: output_29_2.png
+.. image:: output_35_2.png
 
 
 .. code:: python3
@@ -567,12 +657,12 @@ series charts:
 
 .. parsed-literal::
 
-    <matplotlib.axes._subplots.AxesSubplot at 0x7f8dec248eb8>
+    <matplotlib.axes._subplots.AxesSubplot at 0x7fbb8c64b748>
 
 
 
 
-.. image:: output_30_1.png
+.. image:: output_36_1.png
 
 
 That looks better – let’s start looking at performing EDA now.
