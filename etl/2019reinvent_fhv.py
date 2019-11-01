@@ -15,11 +15,9 @@ glueContext = GlueContext(sc)
 spark = glueContext.spark_session
 job = Job(glueContext)
 job.init(args['JOB_NAME'], args)
-## @type: DataSource
-## @args: [database = "reinvent19", table_name = "fhv", transformation_ctx = "datasource0"]
-## @return: datasource0
-## @inputs: []
-datasource0 = glueContext.create_dynamic_frame.from_catalog(database = "reinvent19", table_name = "fhv", transformation_ctx = "datasource0")
+
+datasource0 = glueContext.create_dynamic_frame.from_options(connection_type="s3", connection_options = {"paths": ["s3://serverless-analytics/reinvent-2019/taxi_data/fhv/"]},  format="csv", transformation_ctx = "datasource0")
+
 ## @type: ApplyMapping
 ## @args: [mapping = [("vendorid", "long", "vendorid", "long"), ("lpep_pickup_datetime", "string", "pickup_datetime", "timestamp"), ("lpep_dropoff_datetime", "string", "dropoff_datetime", "timestamp"),("pulocationid", "long", "pulocationid", "long"), ("dolocationid", "long", "dolocationid", "long")], transformation_ctx = "applymapping1"]
 ## @return: applymapping1
