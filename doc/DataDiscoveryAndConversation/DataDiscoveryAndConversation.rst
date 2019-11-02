@@ -30,7 +30,7 @@ Tables list in the AWS Glue console displays values of your table’s
 metadata. You use table definitions to specify sources and targets when
 you create ETL (extract, transform, and load) jobs.
 
-.. code:: ipython3
+.. code:: python3
 
     import boto3
     
@@ -64,7 +64,7 @@ Data Catalog tables as sources and targets. The ETL job reads from and
 writes to the data stores that are specified in the source and target
 Data Catalog tables.
 
-.. code:: ipython3
+.. code:: python3
 
     crawler_name = '2019reinventworkshopcrawler'
     create_crawler_resp = glue_client.create_crawler(
@@ -99,7 +99,7 @@ After it finishes crawling, you can see the datasets (represeted as
 Waiting for the Crawler to finish
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. code:: ipython3
+.. code:: python3
 
     import time
      
@@ -133,7 +133,7 @@ investigation.
 
 Later we’ll use Spark to do ETL and feature engineering.
 
-.. code:: ipython3
+.. code:: python3
 
     !pip install --upgrade pip > /dev/null
     !pip install PyAthena > /dev/null
@@ -142,7 +142,7 @@ Athena uses S3 to store results to allow different types of clients to
 read it and so you can go back and see the results of previous queries.
 We can set that up next:
 
-.. code:: ipython3
+.. code:: python3
 
     import sagemaker
     sagemaker_session = sagemaker.Session()
@@ -151,7 +151,7 @@ We can set that up next:
 Next we’ll create an Athena connection we can use, much like a standard
 JDBC/ODBC connection
 
-.. code:: ipython3
+.. code:: python3
 
     from pyathena import connect
     import pandas as pd
@@ -188,7 +188,7 @@ JDBC/ODBC connection
 .. image:: output_14_2.png
 
 
-.. code:: ipython3
+.. code:: python3
 
     green_etl = '2019reinvent_green'
     
@@ -204,7 +204,7 @@ after kicking it off, you can see it running in the console too:
 
 Wait until the ETL finishes
 
-.. code:: ipython3
+.. code:: python3
 
     import time
      
@@ -222,7 +222,7 @@ Wait until the ETL finishes
     
     print('finished running', response['Crawler']['State'])
 
-.. code:: ipython3
+.. code:: python3
 
     normalized_bucket = 's3://reinvent-snively-2019-lab/canonical/'
     
@@ -247,7 +247,7 @@ Wait until the ETL finishes
 Let’s wait for the next crawler to finish, this will discover the normalized dataset.
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. code:: ipython3
+.. code:: python3
 
     import time
      
@@ -280,7 +280,7 @@ Querying the Normalized Data
 
 Now let’s look at the total counts for the aggregated information
 
-.. code:: ipython3
+.. code:: python3
 
     normalized_df = pd.read_sql('SELECT type, count(*) ride_count FROM "' + database_name + '"."canonical" group by type', conn)
     print(normalized_df)
@@ -312,7 +312,7 @@ Now let’s look at the total counts for the aggregated information
 .. image:: output_23_2.png
 
 
-.. code:: ipython3
+.. code:: python3
 
     query = "select type, date_trunc('day', pickup_datetime) date, count(*) cnt from \"" + database_name + "\".canonical where pickup_datetime < timestamp '2099-12-31' group by type, date_trunc(\'day\', pickup_datetime) "
     typeperday_df = pd.read_sql(query, conn)
@@ -338,7 +338,7 @@ We are expecting only 2018 and 2019 datasets here, but can see there are
 records far into the future and in the past. This represents bad data
 that we want to eliminate before we build our model.
 
-.. code:: ipython3
+.. code:: python3
 
     # Only reason we put this conditional here is so you can execute the cell multiple times
     # if you don't check, it won't find the 'date' column again and makes interacting w/ the notebook more seemless
@@ -417,7 +417,7 @@ that we want to eliminate before we build our model.
 
 
 
-.. code:: ipython3
+.. code:: python3
 
     typeperday_df.loc['2018-01-01':'2019-12-31'].plot(y='cnt')
 
@@ -447,7 +447,7 @@ happened in the ETL process
 
 Let’s find the 2 2088 records to make sure they are in the source data
 
-.. code:: ipython3
+.. code:: python3
 
     pd.read_sql("select * from \"" + database_name + "\".yellow where tpep_pickup_datetime like '2088%'", conn)
 
@@ -543,7 +543,7 @@ Let’s find the 2 2088 records to make sure they are in the source data
 
 
 
-.. code:: ipython3
+.. code:: python3
 
     ## Next let's plot this per type:
     typeperday_df.loc['2018-01-01':'2019-07-30'].pivot_table(index='date', 
@@ -577,7 +577,7 @@ Services (HVFHS). This law went into effect on Feb 1, 2019
 Let’s bring the other license type and see how it affects the time
 series charts:
 
-.. code:: ipython3
+.. code:: python3
 
     create_crawler_resp = glue_client.create_crawler(
         Name=crawler_name + '_fhvhv',
@@ -601,7 +601,7 @@ series charts:
 wait to discover the fhvhv dataset…
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. code:: ipython3
+.. code:: python3
 
     import time
      
@@ -629,7 +629,7 @@ wait to discover the fhvhv dataset…
     finished running READY
 
 
-.. code:: ipython3
+.. code:: python3
 
     query = 'select \'fhvhv\' as type, date_trunc(\'day\', cast(pickup_datetime as timestamp)) date, count(*) cnt from "' + database_name + '"."fhvhv" group by date_trunc(\'day\',  cast(pickup_datetime as timestamp)) '
     typeperday_fhvhv_df = pd.read_sql(query, conn)
@@ -661,7 +661,7 @@ wait to discover the fhvhv dataset…
 .. image:: output_36_2.png
 
 
-.. code:: ipython3
+.. code:: python3
 
     pd.concat([typeperday_fhvhv_df, typeperday_df], sort=False).loc['2018-01-01':'2019-07-30'].pivot_table(index='date', 
                                                              columns='type', 
