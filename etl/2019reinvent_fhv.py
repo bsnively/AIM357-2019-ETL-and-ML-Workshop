@@ -43,7 +43,7 @@ dropnullfields3 = DropNullFields.apply(frame = resolvechoice2, transformation_ct
 customDF = dropnullfields3.toDF()
 customDF = customDF.withColumn("type", lit('fhv'))
 customDF = customDF.withColumn("vendorid", lit('fhv'))
-customDF = customDF.coalesce(5)
+###customDF = customDF.coalesce(5)
 customDynamicFrame = DynamicFrame.fromDF(customDF, glueContext, "customDF_df")
 ##----------------------------------
 

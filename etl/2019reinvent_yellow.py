@@ -42,7 +42,7 @@ dropnullfields3 = DropNullFields.apply(frame = resolvechoice2, transformation_ct
 #convert to a Spark DataFrame...
 customDF = dropnullfields3.toDF()
 customDF = customDF.withColumn("type", lit('yellow'))
-customDF = customDF.coalesce(5)
+###customDF = customDF.coalesce(5)
 customDynamicFrame = DynamicFrame.fromDF(customDF, glueContext, "customDF_df")
 ##----------------------------------
 
