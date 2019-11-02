@@ -30,7 +30,7 @@ Tables list in the AWS Glue console displays values of your table’s
 metadata. You use table definitions to specify sources and targets when
 you create ETL (extract, transform, and load) jobs.
 
-.. code:: python3
+.. code:: ipython3
 
     import boto3
     
@@ -64,7 +64,7 @@ Data Catalog tables as sources and targets. The ETL job reads from and
 writes to the data stores that are specified in the source and target
 Data Catalog tables.
 
-.. code:: python3
+.. code:: ipython3
 
     crawler_name = '2019reinventworkshopcrawler'
     create_crawler_resp = glue_client.create_crawler(
@@ -99,7 +99,7 @@ After it finishes crawling, you can see the datasets (represeted as
 Waiting for the Crawler to finish
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. code:: python3
+.. code:: ipython3
 
     import time
      
@@ -120,11 +120,7 @@ Waiting for the Crawler to finish
 
 .. parsed-literal::
 
-    RUNNING
-    RUNNING
-    STOPPING
-    STOPPING
-    finished running
+    finished running READY
 
 
 Quering the data
@@ -137,7 +133,7 @@ investigation.
 
 Later we’ll use Spark to do ETL and feature engineering.
 
-.. code:: python3
+.. code:: ipython3
 
     !pip install --upgrade pip > /dev/null
     !pip install PyAthena > /dev/null
@@ -146,7 +142,7 @@ Athena uses S3 to store results to allow different types of clients to
 read it and so you can go back and see the results of previous queries.
 We can set that up next:
 
-.. code:: python3
+.. code:: ipython3
 
     import sagemaker
     sagemaker_session = sagemaker.Session()
@@ -155,7 +151,7 @@ We can set that up next:
 Next we’ll create an Athena connection we can use, much like a standard
 JDBC/ODBC connection
 
-.. code:: python3
+.. code:: ipython3
 
     from pyathena import connect
     import pandas as pd
@@ -176,15 +172,15 @@ JDBC/ODBC connection
 
          type  ride_count
     0   green    12105351
-    1  yellow   147263398
-    2     fhv   292722358
+    1     fhv   292722358
+    2  yellow   147263398
 
 
 
 
 .. parsed-literal::
 
-    <matplotlib.axes._subplots.AxesSubplot at 0x7fbb8b72cd68>
+    <matplotlib.axes._subplots.AxesSubplot at 0x7f12a607dc50>
 
 
 
@@ -192,7 +188,7 @@ JDBC/ODBC connection
 .. image:: output_14_2.png
 
 
-.. code:: python3
+.. code:: ipython3
 
     green_etl = '2019reinvent_green'
     
@@ -206,7 +202,27 @@ JDBC/ODBC connection
 
 after kicking it off, you can see it running in the console too:
 
-.. code:: python3
+Wait until the ETL finishes
+
+.. code:: ipython3
+
+    import time
+     
+    response = glue_client.get_crawler(
+        Name=crawler_name + '_normalized'
+    )
+    while (response['Crawler']['State'] == 'RUNNING') | (response['Crawler']['State'] == 'STOPPING'):
+        print(response['Crawler']['State'])
+        # Wait for 40 seconds
+        time.sleep(40)
+        
+        response = glue_client.get_crawler(
+            Name=crawler_name + '_normalized'
+        )
+    
+    print('finished running', response['Crawler']['State'])
+
+.. code:: ipython3
 
     normalized_bucket = 's3://reinvent-snively-2019-lab/canonical/'
     
@@ -231,7 +247,7 @@ after kicking it off, you can see it running in the console too:
 Let’s wait for the next crawler to finish, this will discover the normalized dataset.
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. code:: python3
+.. code:: ipython3
 
     import time
      
@@ -253,6 +269,7 @@ Let’s wait for the next crawler to finish, this will discover the normalized d
 .. parsed-literal::
 
     RUNNING
+    RUNNING
     STOPPING
     STOPPING
     finished running READY
@@ -263,17 +280,16 @@ Querying the Normalized Data
 
 Now let’s look at the total counts for the aggregated information
 
-.. code:: python3
+.. code:: ipython3
 
     normalized_df = pd.read_sql('SELECT type, count(*) ride_count FROM "' + database_name + '"."canonical" group by type', conn)
     print(normalized_df)
     normalized_df.plot.bar(x='type', y='ride_count')
     #
     #     type  ride_count
-    #0     fhv    31956302
-    #1  yellow    44459136
-    #2   green     3298036
-
+    #0   green    12105351
+    #1     fhv   292722358
+    #2  yellow   147263398
 
 
 .. parsed-literal::
@@ -288,15 +304,15 @@ Now let’s look at the total counts for the aggregated information
 
 .. parsed-literal::
 
-    <matplotlib.axes._subplots.AxesSubplot at 0x7fbb8b9fdda0>
+    <matplotlib.axes._subplots.AxesSubplot at 0x7f129f58c4a8>
 
 
 
 
-.. image:: output_22_2.png
+.. image:: output_23_2.png
 
 
-.. code:: python3
+.. code:: ipython3
 
     query = "select type, date_trunc('day', pickup_datetime) date, count(*) cnt from \"" + database_name + "\".canonical where pickup_datetime < timestamp '2099-12-31' group by type, date_trunc(\'day\', pickup_datetime) "
     typeperday_df = pd.read_sql(query, conn)
@@ -307,12 +323,12 @@ Now let’s look at the total counts for the aggregated information
 
 .. parsed-literal::
 
-    <matplotlib.axes._subplots.AxesSubplot at 0x7fbb8bd4e160>
+    <matplotlib.axes._subplots.AxesSubplot at 0x7f129f356dd8>
 
 
 
 
-.. image:: output_23_1.png
+.. image:: output_24_1.png
 
 
 We see some bad data here…
@@ -322,7 +338,7 @@ We are expecting only 2018 and 2019 datasets here, but can see there are
 records far into the future and in the past. This represents bad data
 that we want to eliminate before we build our model.
 
-.. code:: python3
+.. code:: ipython3
 
     # Only reason we put this conditional here is so you can execute the cell multiple times
     # if you don't check, it won't find the 'date' column again and makes interacting w/ the notebook more seemless
@@ -371,29 +387,29 @@ that we want to eliminate before we build our model.
       </thead>
       <tbody>
         <tr>
-          <th>2018-12-09</th>
-          <td>green</td>
-          <td>20401</td>
-        </tr>
-        <tr>
-          <th>2018-08-29</th>
-          <td>green</td>
-          <td>21671</td>
-        </tr>
-        <tr>
-          <th>2019-02-09</th>
+          <th>2018-02-10</th>
           <td>fhv</td>
-          <td>56647</td>
+          <td>837532</td>
         </tr>
         <tr>
-          <th>2018-10-19</th>
-          <td>green</td>
-          <td>25717</td>
-        </tr>
-        <tr>
-          <th>2019-09-17</th>
+          <th>2018-10-25</th>
           <td>yellow</td>
-          <td>3</td>
+          <td>2</td>
+        </tr>
+        <tr>
+          <th>2017-01-03</th>
+          <td>yellow</td>
+          <td>1</td>
+        </tr>
+        <tr>
+          <th>2018-01-27</th>
+          <td>fhv</td>
+          <td>749203</td>
+        </tr>
+        <tr>
+          <th>2018-10-25</th>
+          <td>fhv</td>
+          <td>760140</td>
         </tr>
       </tbody>
     </table>
@@ -401,7 +417,7 @@ that we want to eliminate before we build our model.
 
 
 
-.. code:: python3
+.. code:: ipython3
 
     typeperday_df.loc['2018-01-01':'2019-12-31'].plot(y='cnt')
 
@@ -410,12 +426,12 @@ that we want to eliminate before we build our model.
 
 .. parsed-literal::
 
-    <matplotlib.axes._subplots.AxesSubplot at 0x7fbb8c6a6f60>
+    <matplotlib.axes._subplots.AxesSubplot at 0x7f12a6374c88>
 
 
 
 
-.. image:: output_26_1.png
+.. image:: output_27_1.png
 
 
 Let’s look at some of the bad data now:
@@ -431,7 +447,7 @@ happened in the ETL process
 
 Let’s find the 2 2088 records to make sure they are in the source data
 
-.. code:: python3
+.. code:: ipython3
 
     pd.read_sql("select * from \"" + database_name + "\".yellow where tpep_pickup_datetime like '2088%'", conn)
 
@@ -527,7 +543,7 @@ Let’s find the 2 2088 records to make sure they are in the source data
 
 
 
-.. code:: python3
+.. code:: ipython3
 
     ## Next let's plot this per type:
     typeperday_df.loc['2018-01-01':'2019-07-30'].pivot_table(index='date', 
@@ -540,12 +556,12 @@ Let’s find the 2 2088 records to make sure they are in the source data
 
 .. parsed-literal::
 
-    <matplotlib.axes._subplots.AxesSubplot at 0x7fbb8c99db00>
+    <matplotlib.axes._subplots.AxesSubplot at 0x7f129f3aff98>
 
 
 
 
-.. image:: output_30_1.png
+.. image:: output_31_1.png
 
 
 Fixing our Time Series data
@@ -561,7 +577,7 @@ Services (HVFHS). This law went into effect on Feb 1, 2019
 Let’s bring the other license type and see how it affects the time
 series charts:
 
-.. code:: python3
+.. code:: ipython3
 
     create_crawler_resp = glue_client.create_crawler(
         Name=crawler_name + '_fhvhv',
@@ -585,7 +601,7 @@ series charts:
 wait to discover the fhvhv dataset…
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. code:: python3
+.. code:: ipython3
 
     import time
      
@@ -613,7 +629,7 @@ wait to discover the fhvhv dataset…
     finished running READY
 
 
-.. code:: python3
+.. code:: ipython3
 
     query = 'select \'fhvhv\' as type, date_trunc(\'day\', cast(pickup_datetime as timestamp)) date, count(*) cnt from "' + database_name + '"."fhvhv" group by date_trunc(\'day\',  cast(pickup_datetime as timestamp)) '
     typeperday_fhvhv_df = pd.read_sql(query, conn)
@@ -627,25 +643,25 @@ wait to discover the fhvhv dataset…
                  type     cnt
     date                     
     2019-02-18  fhvhv  595367
+    2019-02-07  fhvhv  649575
     2019-02-25  fhvhv  657598
     2019-02-22  fhvhv  774664
-    2019-04-23  fhvhv  600870
-    2019-05-23  fhvhv  698940
+    2019-06-16  fhvhv  690146
 
 
 
 
 .. parsed-literal::
 
-    <matplotlib.axes._subplots.AxesSubplot at 0x7fbb8bc8a278>
+    <matplotlib.axes._subplots.AxesSubplot at 0x7f12a60addd8>
 
 
 
 
-.. image:: output_35_2.png
+.. image:: output_36_2.png
 
 
-.. code:: python3
+.. code:: ipython3
 
     pd.concat([typeperday_fhvhv_df, typeperday_df], sort=False).loc['2018-01-01':'2019-07-30'].pivot_table(index='date', 
                                                              columns='type', 
@@ -657,12 +673,12 @@ wait to discover the fhvhv dataset…
 
 .. parsed-literal::
 
-    <matplotlib.axes._subplots.AxesSubplot at 0x7fbb8c64b748>
+    <matplotlib.axes._subplots.AxesSubplot at 0x7f12a608b710>
 
 
 
 
-.. image:: output_36_1.png
+.. image:: output_37_1.png
 
 
 That looks better – let’s start looking at performing EDA now.
