@@ -1,0 +1,36 @@
+## Activity 3: Let's test our workflow!
+
+**Steps:**
+
+1. In the AWS Step Functions console, click **State machines** in the top, right-hand corner of the screen.
+2. Click on the **reinvent-etl-inference-workflow** state machine 
+3. Click **Start execution**
+4. Paste the following json text into the input field (see screenshot below), and click **Start execution**. Note the version of the dataset that we are using for training, as denoted by the "DataDate" parameter:
+```
+{
+  "instances": [
+    {
+      "start": "2019-07-03",
+      "target": [
+        120
+      ]
+    }
+  ],
+  "configuration": {
+    "num_samples": 5,
+    "output_types": [
+      "mean",
+      "quantiles",
+      "samples"
+    ],
+    "quantiles": [
+      "0.5",
+      "0.9"
+    ]
+  }
+}
+```
+
+![New Execution](/images/new_execution.png)
+
+5. Now we can watch the workflow progress through each of the states. Be sure to to inspect the inputs and outputs of each state.
