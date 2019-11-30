@@ -16,11 +16,10 @@ spark = glueContext.spark_session
 job = Job(glueContext)
 job.init(args['JOB_NAME'], args)
 
-datasource0 = glueContext.create_dynamic_frame.from_options(connection_type="s3", 
-                                                            connection_options = {"paths": ["s3://serverless-analytics/reinvent-2019/taxi_data/yellow/"]},  
-                                                            format_options={"withHeader":True}, 
-                                                            format="csv", 
-                                                            transformation_ctx = "datasource0")
+input_df = spark.read.csv('s3://serverless-analytics/reinvent-2019/taxi_data/yellow/', header=True)
+
+# Convert back to a DynamicFrame for further processing.
+datasource0 = DynamicFrame.fromDF(input_df, glueContext, "datasource0")
                                                             
 ## @type: ApplyMapping
 ## @args: [mapping = [("vendorid", "long", "vendorid", "long"), ("tpep_pickup_datetime", "string", "pickup_datetime", "timestamp"), ("tpep_dropoff_datetime", "string", "dropoff_datetime", "timestamp"),("pulocationid", "long", "pulocationid", "long"), ("dolocationid", "long", "dolocationid", "long")], transformation_ctx = "applymapping1"]
@@ -52,3 +51,4 @@ customDynamicFrame = DynamicFrame.fromDF(customDF, glueContext, "customDF_df")
 ## @inputs: [frame = dropnullfields3]
 datasink4 = glueContext.write_dynamic_frame.from_options(frame = customDynamicFrame, connection_type = "s3", connection_options = {"path": args['output_location']}, format = "parquet", transformation_ctx = "datasink4")
 job.commit()
+
