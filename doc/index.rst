@@ -4,7 +4,7 @@ AIM357 - Build an ETL pipeline to analyze customer data
 
 Machine learning involves more than just training models; you need to source and prepare data, engineer features, select algorithms, train and tune models, and then deploy those models and monitor their performance in production. Learn how to set up an ETL pipeline to analyze customer data using Amazon SageMaker, AWS Glue, and AWS Step Functions.
 
-This workshop will be around the ETL and full pipeline to perofrm Time-series forecasting 
+This workshop will be around the ETL and full pipeline to perofrm Time-series forecasting
 using NYC Taxi Dataset.  It includes the following steps:
 
 - Crawl, Discover, and Explore the new datasets in a Data lake
@@ -23,7 +23,6 @@ Notebooks
 
 .. toctree::
     :maxdepth: 2
-
     DataDiscoveryAndConversation/DataDiscoveryAndConversation
     GluePySparkMLFeatureEngineering/GluePySparkMLFeatureEngineering
-
+    TestingForecastResults/TestingForecastResults
