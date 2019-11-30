@@ -35,7 +35,9 @@
 
 ![subscription](/images/subscription.png)
 
-6. Click **Create subscription** 
+6. In the **Protocol** field, select SMS
+7. In the **Endpoint** field, enter your cell-phone number (note that these accounts and all data stored within them will be deleted directly after this workshop, so all of these details will be deleted)
+8. Click **Create subscription** 
 
 ## Activity 3: Let's test our workflow!
 
