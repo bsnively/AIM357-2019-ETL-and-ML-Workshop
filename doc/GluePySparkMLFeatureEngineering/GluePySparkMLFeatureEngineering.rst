@@ -4,7 +4,7 @@ Feature Engineering and Training our Model
 We’ll first setup the glue context in which we can read the glue data
 catalog, as well as setup some constants.
 
-.. code:: python3
+.. code:: python
 
     import sys
     from awsglue.transforms import *
@@ -12,11 +12,34 @@ catalog, as well as setup some constants.
     from pyspark.context import SparkContext
     from awsglue.context import GlueContext
     from awsglue.job import Job
-    
+
     glueContext = GlueContext(SparkContext.getOrCreate())
-    
-    database_name = "reinvent19"
+
+    database_name = '2019reinventWorkshop'
     canonical_table_name = "canonical"
+
+
+.. parsed-literal::
+
+    Starting Spark application
+
+
+
+.. raw:: html
+
+    <table>
+    <tr><th>ID</th><th>YARN Application ID</th><th>Kind</th><th>State</th><th>Spark UI</th><th>Driver log</th><th>Current session?</th></tr><tr><td>0</td><td>application_1575125038238_0001</td><td>pyspark</td><td>idle</td><td><a target="_blank" href="http://ip-172-32-64-77.ec2.internal:20888/proxy/application_1575125038238_0001/">Link</a></td><td><a target="_blank" href="http://ip-172-32-84-1.ec2.internal:8042/node/containerlogs/container_1575125038238_0001_01_000001/livy">Link</a></td><td>✔</td></tr></table>
+
+
+
+.. parsed-literal::
+
+    FloatProgress(value=0.0, bar_style='info', description='Progress:', layout=Layout(height='25px', width='50%'),…
+
+
+.. parsed-literal::
+
+    SparkSession available as 'spark'.
 
 
 
@@ -33,7 +56,7 @@ the glue data catalog and looking up the data
 
 Here we can see there are **500 million** records
 
-.. code:: python3
+.. code:: python
 
     taxi_data = glueContext.create_dynamic_frame.from_catalog(database=database_name, table_name=canonical_table_name)
     print("2018/2019 Taxi Data Count: ", taxi_data.count())
@@ -48,7 +71,7 @@ Here we can see there are **500 million** records
 
 .. parsed-literal::
 
-    2018/2019 Taxi Data Count:  4634941576
+    2018/2019 Taxi Data Count:  452091095
     root
     |-- vendorid: string
     |-- pickup_datetime: timestamp
@@ -63,10 +86,35 @@ Caching in Spark
 We’ll use the taxi dataframe a bit repeatitively, so we’ll cache it ehre
 and show some sample records.
 
-.. code:: python3
+.. code:: python
 
     df = taxi_data.toDF().cache()
-    df.show(30, False)
+    df.show(10, False)
+
+
+
+.. parsed-literal::
+
+    FloatProgress(value=0.0, bar_style='info', description='Progress:', layout=Layout(height='25px', width='50%'),…
+
+
+.. parsed-literal::
+
+    +--------+-------------------+-------------------+------------+------------+-----+
+    |vendorid|pickup_datetime    |dropoff_datetime   |pulocationid|dolocationid|type |
+    +--------+-------------------+-------------------+------------+------------+-----+
+    |null    |null               |null               |null        |null        |green|
+    |null    |2018-01-01 00:18:50|2018-01-01 00:24:39|null        |null        |green|
+    |null    |2018-01-01 00:30:26|2018-01-01 00:46:42|null        |null        |green|
+    |null    |2018-01-01 00:07:25|2018-01-01 00:19:45|null        |null        |green|
+    |null    |2018-01-01 00:32:40|2018-01-01 00:33:41|null        |null        |green|
+    |null    |2018-01-01 00:32:40|2018-01-01 00:33:41|null        |null        |green|
+    |null    |2018-01-01 00:38:35|2018-01-01 01:08:50|null        |null        |green|
+    |null    |2018-01-01 00:18:41|2018-01-01 00:28:22|null        |null        |green|
+    |null    |2018-01-01 00:38:02|2018-01-01 00:55:02|null        |null        |green|
+    |null    |2018-01-01 00:05:02|2018-01-01 00:18:35|null        |null        |green|
+    +--------+-------------------+-------------------+------------+------------+-----+
+    only showing top 10 rows
 
 Removing invalid dates
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -76,14 +124,14 @@ data in it, and timestamps that were outside the range that are valid.
 Let’s ensure we are only using the valid records when aggregating and
 creating our time series.
 
-.. code:: python3
+.. code:: python
 
     from pyspark.sql.functions import to_date, lit
     from pyspark.sql.types import TimestampType
-    
+
     dates = ("2018-01-01",  "2019-07-01")
     date_from, date_to = [to_date(lit(s)).cast(TimestampType()) for s in dates]
-    
+
     df  = df.where((df.pickup_datetime > date_from) & (df.pickup_datetime < date_to))
 
 
@@ -106,30 +154,30 @@ count/aggregate over those.
 
 Let’s start by adding a ts_resampled column
 
-.. code:: python3
+.. code:: python
 
     from pyspark.sql.functions import col, max as max_, min as min_
-    
+
     ## day = seconds*minutes*hours
     unit = 60 * 60 * 24
     epoch = (col("pickup_datetime").cast("bigint") / unit).cast("bigint") * unit
-    
+
     with_epoch = df.withColumn("epoch", epoch)
-    
+
     min_epoch, max_epoch = with_epoch.select(min_("epoch"), max_("epoch")).first()
-    
-    # Reference range 
+
+    # Reference range
     ref = spark.range(
         min_epoch, max_epoch + 1, unit
     ).toDF("epoch")
-    
+
     resampled_df = (ref
         .join(with_epoch, "epoch", "left")
         .orderBy("epoch")
         .withColumn("ts_resampled", col("epoch").cast("timestamp")))
-    
+
     resampled_df.cache()
-    
+
     resampled_df.show(10, False)
 
 
@@ -141,20 +189,20 @@ Let’s start by adding a ts_resampled column
 
 .. parsed-literal::
 
-    +----------+-------------------+-------------------+------------+------------+------+--------+-------------------+
-    |epoch     |pickup_datetime    |dropoff_datetime   |pulocationid|dolocationid|type  |vendorid|ts_resampled       |
-    +----------+-------------------+-------------------+------------+------------+------+--------+-------------------+
-    |1514764800|2018-01-01 09:20:00|null               |null        |null        |fhv   |fhv     |2018-01-01 00:00:00|
-    |1514764800|2018-01-01 12:37:41|2018-01-01 13:04:49|141         |132         |yellow|1       |2018-01-01 00:00:00|
-    |1514764800|2018-01-01 10:20:00|null               |null        |null        |fhv   |fhv     |2018-01-01 00:00:00|
-    |1514764800|2018-01-01 12:50:17|2018-01-01 13:06:24|138         |79          |yellow|2       |2018-01-01 00:00:00|
-    |1514764800|2018-01-01 11:20:00|null               |null        |null        |fhv   |fhv     |2018-01-01 00:00:00|
-    |1514764800|2018-01-01 12:05:16|2018-01-01 12:27:23|138         |170         |yellow|2       |2018-01-01 00:00:00|
-    |1514764800|2018-01-01 11:55:00|null               |null        |null        |fhv   |fhv     |2018-01-01 00:00:00|
-    |1514764800|2018-01-01 12:32:16|2018-01-01 12:42:28|137         |186         |yellow|2       |2018-01-01 00:00:00|
-    |1514764800|2018-01-01 14:15:00|null               |null        |null        |fhv   |fhv     |2018-01-01 00:00:00|
-    |1514764800|2018-01-01 12:43:54|2018-01-01 13:16:04|186         |93          |yellow|2       |2018-01-01 00:00:00|
-    +----------+-------------------+-------------------+------------+------------+------+--------+-------------------+
+    +----------+--------+-------------------+-------------------+------------+------------+------+-------------------+
+    |epoch     |vendorid|pickup_datetime    |dropoff_datetime   |pulocationid|dolocationid|type  |ts_resampled       |
+    +----------+--------+-------------------+-------------------+------------+------------+------+-------------------+
+    |1514764800|fhv     |2018-01-01 04:01:19|2018-01-01 04:06:54|null        |null        |fhv   |2018-01-01 00:00:00|
+    |1514764800|null    |2018-01-01 10:55:25|2018-01-01 10:57:42|null        |null        |yellow|2018-01-01 00:00:00|
+    |1514764800|fhv     |2018-01-01 03:43:11|2018-01-01 03:53:41|null        |null        |fhv   |2018-01-01 00:00:00|
+    |1514764800|fhv     |2018-01-01 04:12:23|2018-01-01 04:36:15|null        |null        |fhv   |2018-01-01 00:00:00|
+    |1514764800|fhv     |2018-01-01 05:27:22|2018-01-01 06:01:18|null        |null        |fhv   |2018-01-01 00:00:00|
+    |1514764800|fhv     |2018-01-01 04:50:57|2018-01-01 04:56:17|null        |null        |fhv   |2018-01-01 00:00:00|
+    |1514764800|fhv     |2018-01-01 04:23:56|2018-01-01 05:17:40|null        |null        |fhv   |2018-01-01 00:00:00|
+    |1514764800|fhv     |2018-01-01 17:03:23|2018-01-01 17:33:46|null        |null        |fhv   |2018-01-01 00:00:00|
+    |1514764800|fhv     |2018-01-01 17:48:59|2018-01-01 17:58:42|null        |null        |fhv   |2018-01-01 00:00:00|
+    |1514764800|fhv     |2018-01-01 15:57:23|2018-01-01 16:09:00|null        |null        |fhv   |2018-01-01 00:00:00|
+    +----------+--------+-------------------+-------------------+------------+------------+------+-------------------+
     only showing top 10 rows
 
 Creating our time series data
@@ -163,10 +211,10 @@ Creating our time series data
 You can see now that we are resampling per day the resample column, in
 which we can now aggregate across.
 
-.. code:: python3
+.. code:: python
 
     from pyspark.sql import functions as func
-    
+
     count_per_day_resamples = resampled_df.groupBy(["ts_resampled", "type"]).count()
     count_per_day_resamples.cache()
     count_per_day_resamples.show(10, False)
@@ -183,24 +231,28 @@ which we can now aggregate across.
     +-------------------+------+------+
     |ts_resampled       |type  |count |
     +-------------------+------+------+
-    |2018-03-05 00:00:00|yellow|290631|
-    |2018-11-11 00:00:00|yellow|257698|
-    |2018-11-28 00:00:00|green |22899 |
-    |2018-11-20 00:00:00|yellow|278900|
-    |2018-12-30 00:00:00|fhv   |688807|
-    |2019-02-22 00:00:00|fhv   |65041 |
+    |2019-04-10 00:00:00|green |17165 |
     |2018-02-21 00:00:00|green |25651 |
+    |2018-11-11 00:00:00|yellow|257698|
+    |2019-02-22 00:00:00|fhv   |65041 |
     |2018-03-15 00:00:00|yellow|348198|
-    |2018-09-03 00:00:00|yellow|189402|
+    |2018-12-30 00:00:00|fhv   |683406|
     |2019-03-07 00:00:00|yellow|291098|
+    |2018-11-28 00:00:00|green |22899 |
+    |2018-03-05 00:00:00|yellow|290631|
+    |2018-11-20 00:00:00|yellow|278900|
     +-------------------+------+------+
     only showing top 10 rows
 
-.. code:: python3
+We restructure it so that each taxi type is it’s own column in the dataset.
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    #time_series_df = count_per_day_resamples.groupBy(["ts_resampled", "pulocationid", "dolocationid"])\
+.. code:: python
+
     time_series_df = count_per_day_resamples.groupBy(["ts_resampled"])\
-    .pivot('type').sum("count").drop("null").cache()
+    .pivot('type')\
+    .sum("count").cache()
+
     time_series_df.show(10,False)
 
 
@@ -216,45 +268,25 @@ which we can now aggregate across.
     |ts_resampled       |fhv   |green|yellow|
     +-------------------+------+-----+------+
     |2019-06-18 00:00:00|69383 |15545|242304|
-    |2018-12-13 00:00:00|818550|24585|308411|
+    |2018-12-13 00:00:00|822745|24585|308411|
     |2019-03-21 00:00:00|47855 |20326|274057|
-    |2018-09-09 00:00:00|803042|20365|256918|
-    |2018-05-15 00:00:00|688946|25458|309023|
-    |2018-07-13 00:00:00|749636|24518|277145|
-    |2018-08-16 00:00:00|715263|22113|277677|
-    |2018-03-21 00:00:00|511349|11981|183629|
-    |2018-09-20 00:00:00|719646|23378|298630|
-    |2018-01-31 00:00:00|642437|26667|319256|
-    |2018-12-24 00:00:00|639463|19314|185895|
-    |2019-05-03 00:00:00|71081 |18265|275523|
-    |2018-02-13 00:00:00|639229|25869|317963|
-    |2018-07-27 00:00:00|809908|24765|281050|
-    |2018-03-25 00:00:00|714282|25115|275756|
-    |2018-11-21 00:00:00|749954|22711|260399|
-    |2018-05-11 00:00:00|743644|29137|324657|
-    |2019-05-12 00:00:00|57573 |14959|225371|
-    |2019-04-25 00:00:00|64567 |16580|266326|
-    |2018-09-25 00:00:00|701224|21278|251618|
-    |2019-03-10 00:00:00|35838 |15727|228385|
-    |2018-10-19 00:00:00|806788|25717|304569|
-    |2018-11-12 00:00:00|652918|18514|260713|
-    |2018-06-01 00:00:00|774779|28152|320596|
-    |2018-09-02 00:00:00|721487|19579|191190|
-    |2019-06-26 00:00:00|67536 |15561|249641|
-    |2019-04-30 00:00:00|64186 |15550|253571|
-    |2018-04-11 00:00:00|665871|25950|320829|
-    |2018-02-27 00:00:00|617158|25348|301654|
-    |2019-06-06 00:00:00|68407 |16707|261778|
+    |2018-09-09 00:00:00|794608|20365|256918|
+    |2018-01-31 00:00:00|640887|26667|319256|
+    |2018-08-16 00:00:00|717045|22113|277677|
+    |2018-03-21 00:00:00|508492|11981|183629|
+    |2018-09-20 00:00:00|723583|23378|298630|
+    |2018-05-15 00:00:00|689620|25458|309023|
+    |2018-12-24 00:00:00|640740|19314|185895|
     +-------------------+------+-----+------+
-    only showing top 30 rows
+    only showing top 10 rows
 
 Local Data Manipulation
 -----------------------
 
-now that we an aggregated time series that is much smaller – let’s send
+Now that we an aggregated time series that is much smaller – let’s send
 this back to the local python environment off the spark cluster on Glue.
 
-.. code:: python3
+.. code:: python
 
     %%spark -o time_series_df
 
@@ -271,14 +303,19 @@ this back to the local python environment off the spark cluster on Glue.
     FloatProgress(value=0.0, bar_style='info', description='Progress:', layout=Layout(height='25px', width='50%'),…
 
 
-we are in the local panda/python environment now
+We are in the local panda/python environment now
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. code:: python3
+.. code:: python
 
     %%local
-    time_series_df.dtypes
+    import pandas as pd
+    print(time_series_df.dtypes)
 
+    time_series_df = time_series_df.set_index('ts_resampled', drop=True)
+    time_series_df = time_series_df.sort_index()
+
+    time_series_df.head()
 
 
 
@@ -292,27 +329,35 @@ we are in the local panda/python environment now
 
 
 
-.. code:: python3
+.. parsed-literal::
+
+    VBox(children=(HBox(children=(HTML(value='Type:'), Button(description='Table', layout=Layout(width='70px'), st…
+
+
+
+.. parsed-literal::
+
+    Output()
+
+
+We’ll create the training window next, We are going to predict the next week
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code:: python
 
     %%local
-    import pandas as pd
-    time_series_df = time_series_df.set_index('ts_resampled', drop=True)
-    time_series_df = time_series_df.sort_index()
 
-.. code:: python3
+    ## number of time-steps that the model is trained to predict
+    prediction_length = 14
 
-    %%local
-    prediction_length = 12
-    context_length = 12
-    
-    n_weeks = 7
+    n_weeks = 4
     end_training = time_series_df.index[-n_weeks*prediction_length]
     print('end training time', end_training)
-    
+
     time_series = []
     for ts in time_series_df.columns:
         time_series.append(time_series_df[ts])
-        
+
     time_series_training = []
     for ts in time_series_df.columns:
         time_series_training.append(time_series_df.loc[:end_training][ts])
@@ -320,10 +365,26 @@ we are in the local panda/python environment now
 
 .. parsed-literal::
 
-    end training time 2019-04-08 00:00:00
+    end training time 2019-05-06 00:00:00
 
 
-.. code:: python3
+We’ll install matplotlib in the local kernel to visualize this.
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code:: python
+
+    %%local
+    !pip install matplotlib > /dev/null
+
+Visualizing the training and test dataset:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In this next cell, we can see how the training and test datasets are
+split up. Since this is time series, we don’t do a random split,
+instead, we look at how far in the future we are predicting and using
+that a a knob.
+
+.. code:: python
 
     %%local
     %matplotlib inline
@@ -334,34 +395,38 @@ we are in the local panda/python environment now
     cols_float = time_series_df.columns
     cmap = matplotlib.cm.get_cmap('Spectral')
     colors = cmap(np.arange(0,len(cols_float))/len(cols_float))
-    
-    
+
+
     plt.figure(figsize=[14,8]);
     for c in range(len(cols_float)):
-        plt.plot(time_series_df.loc[:end_training][cols_float[c]], alpha=0.5, color=colors[c], label=cols_float[c]);  
+        plt.plot(time_series_df.loc[:end_training][cols_float[c]], alpha=0.5, color=colors[c], label=cols_float[c]);
     plt.legend(loc='center left');
     for c in range(len(cols_float)):
         plt.plot(time_series_df.loc[end_training:][cols_float[c]], alpha=0.25, color=colors[c], label=None);
     plt.axvline(x=end_training, color='k', linestyle=':');
-    #plt.text(time_series_df.index[int((time_series_df.shape[0]-n_weeks*prediction_length)*0.75)], time_series_df.max().max()/2, 'Train');
-    #plt.text(time_series_df.index[time_series_df.shape[0]-int(n_weeks*prediction_length/2)], time_series_df.max().max()/2, 'Test');
-    #plt.xlabel('Time');
-    #plt.show()
+    plt.text(time_series_df.index[int((time_series_df.shape[0]-n_weeks*prediction_length)*0.75)], time_series_df.max().max()/2, 'Train');
+    plt.text(time_series_df.index[time_series_df.shape[0]-int(n_weeks*prediction_length/2)], time_series_df.max().max()/2, 'Test');
+    plt.xlabel('Time');
+    plt.show()
 
 
 
-.. image:: output_20_0.png
+.. image:: output_24_0.png
 
 
 Cleaning our Time Series
 ------------------------
 
+FHV still has the issue – the time series drops when the law is in
+place.
+
 we still need to pull in the FHV HV dataset starting in Feb. This
 represents the rideshare apps going to a difference licence type under
 the NYC TLC.
 
-.. code:: python3
+.. code:: python
 
+    ## we are running back on spark now
     fhvhv_data = glueContext.create_dynamic_frame.from_catalog(database=database_name, table_name="fhvhv")
     fhvhv_df = fhvhv_data.toDF().cache()
 
@@ -372,15 +437,13 @@ the NYC TLC.
     FloatProgress(value=0.0, bar_style='info', description='Progress:', layout=Layout(height='25px', width='50%'),…
 
 
-.. code:: python3
+Let’s filter the time range just in case we have additional bad records here.
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    from pyspark.sql.functions import to_date, lit
-    from pyspark.sql.types import TimestampType
-    
-    dates = ("2018-01-01",  "2019-07-01")
-    date_from, date_to = [to_date(lit(s)).cast(TimestampType()) for s in dates]
-    
+.. code:: python
+
     fhvhv_df = fhvhv_df.where((fhvhv_df.pickup_datetime > date_from) & (fhvhv_df.pickup_datetime < date_to)).cache()
+
     from pyspark.sql.functions import to_timestamp
     fhvhv_df = fhvhv_df.withColumn("pickup_datetime", to_timestamp("pickup_datetime", "yyyy-MM-dd HH:mm:ss"))
     fhvhv_df.show(5, False)
@@ -405,30 +468,33 @@ the NYC TLC.
     +-----------------+--------------------+-------------------+-------------------+------------+------------+-------+
     only showing top 5 rows
 
-.. code:: python3
+Let’s first create our rollup column for the time resampling
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code:: python
 
     from pyspark.sql.functions import col, max as max_, min as min_
-    
+
     ## day = seconds*minutes*hours
     unit = 60 * 60 * 24
-    
+
     epoch = (col("pickup_datetime").cast("bigint") / unit).cast("bigint") * unit
-    
+
     with_epoch = fhvhv_df.withColumn("epoch", epoch)
-    
+
     min_epoch, max_epoch = with_epoch.select(min_("epoch"), max_("epoch")).first()
-    
+
     ref = spark.range(
         min_epoch, max_epoch + 1, unit
     ).toDF("epoch")
-    
+
     resampled_fhvhv_df = (ref
         .join(with_epoch, "epoch", "left")
         .orderBy("epoch")
         .withColumn("ts_resampled", col("epoch").cast("timestamp")))
-    
+
     resampled_fhvhv_df = resampled_fhvhv_df.cache()
-    
+
     resampled_fhvhv_df.show(10, False)
 
 
@@ -456,10 +522,12 @@ the NYC TLC.
     +----------+-----------------+--------------------+-------------------+-------------------+------------+------------+-------+-------------------+
     only showing top 10 rows
 
-.. code:: python3
+Create our Time Series now
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code:: python
 
     from pyspark.sql import functions as func
-    #count_per_day_resamples = resampled_df.groupBy(["ts_resampled", "type", "pulocationid", "dolocationid"]).count()
     count_per_day_resamples = resampled_fhvhv_df.groupBy(["ts_resampled"]).count()
     count_per_day_resamples.cache()
     count_per_day_resamples.show(10, False)
@@ -490,7 +558,12 @@ the NYC TLC.
     +-------------------+------+
     only showing top 10 rows
 
-.. code:: python3
+--------------
+
+Now we bring this new time series back locally to join it w/ the
+existing one.
+
+.. code:: python
 
     %%spark -o fhvhv_timeseries_df
 
@@ -507,7 +580,10 @@ the NYC TLC.
     FloatProgress(value=0.0, bar_style='info', description='Progress:', layout=Layout(height='25px', width='50%'),…
 
 
-.. code:: python3
+We rename the count column to be fhvhv so we can join it w/ the other dataframe
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code:: python
 
     %%local
     fhvhv_timeseries_df = fhvhv_timeseries_df.rename(columns={"count": "fhvhv"})
@@ -520,7 +596,7 @@ When we look at the FHVHV dataset starting in Feb 1st, you can see the
 time series looks normal and there isn’t a giant drop in the dataset on
 that day.
 
-.. code:: python3
+.. code:: python
 
     %%local
     plt.figure(figsize=[14,8]);
@@ -531,24 +607,24 @@ that day.
 
 .. parsed-literal::
 
-    [<matplotlib.lines.Line2D at 0x7f997e4e92b0>,
-     <matplotlib.lines.Line2D at 0x7f997e4956a0>,
-     <matplotlib.lines.Line2D at 0x7f997e495780>,
-     <matplotlib.lines.Line2D at 0x7f997e4958d0>]
+    [<matplotlib.lines.Line2D at 0x7f31f90e32e8>,
+     <matplotlib.lines.Line2D at 0x7f31f90aa518>,
+     <matplotlib.lines.Line2D at 0x7f31f90aa6d8>,
+     <matplotlib.lines.Line2D at 0x7f31f90aa828>]
 
 
 
 
-.. image:: output_29_1.png
+.. image:: output_38_1.png
 
 
-but now we need to combine the FHV and FHVHV dataset
+But now we need to combine the FHV and FHVHV dataset
 ----------------------------------------------------
 
 Let’s create a new dataset and call it full_fhv meaning both
 for-hire-vehicles and for-hire-vehicles high volume.
 
-.. code:: python3
+.. code:: python
 
     %%local
     full_timeseries = time_series_df.join(fhvhv_timeseries_df)
@@ -556,7 +632,12 @@ for-hire-vehicles and for-hire-vehicles high volume.
     full_timeseries['full_fhv'] = full_timeseries['fhv'] + full_timeseries['fhvhv']
     full_timeseries = full_timeseries.drop(['fhv', 'fhvhv'], axis=1)
 
-.. code:: python3
+    full_timeseries = full_timeseries.fillna(0)
+
+Visualizing the joined dataset
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code:: python
 
     %%local
     plt.figure(figsize=[14,8]);
@@ -567,111 +648,128 @@ for-hire-vehicles and for-hire-vehicles high volume.
 
 .. parsed-literal::
 
-    [<matplotlib.lines.Line2D at 0x7f997e5e9cc0>,
-     <matplotlib.lines.Line2D at 0x7f997e522cf8>,
-     <matplotlib.lines.Line2D at 0x7f997e522cc0>]
+    [<matplotlib.lines.Line2D at 0x7f31f9064080>,
+     <matplotlib.lines.Line2D at 0x7f31f9027780>,
+     <matplotlib.lines.Line2D at 0x7f31f9027860>]
 
 
 
 
-.. image:: output_32_1.png
+.. image:: output_42_1.png
 
 
-.. code:: python3
+Looking at the training/test split now
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code:: python
 
     %%local
+    %matplotlib inline
+    import matplotlib
+    import matplotlib.pyplot as plt
+    import numpy as np
+    #cols_float = time_series_df.drop(['pulocationid', 'dolocationid'], axis=1).columns
+    cols_float = full_timeseries.columns
+    cmap = matplotlib.cm.get_cmap('Spectral')
+    colors = cmap(np.arange(0,len(cols_float))/len(cols_float))
+
+
     plt.figure(figsize=[14,8]);
-    plt.plot(full_timeseries.resample('7D', convention='end').sum(), marker='8', linestyle='--')
+    for c in range(len(cols_float)):
+        plt.plot(full_timeseries.loc[:end_training][cols_float[c]], alpha=0.5, color=colors[c], label=cols_float[c]);
+    plt.legend(loc='center left');
+    for c in range(len(cols_float)):
+        plt.plot(full_timeseries.loc[end_training:][cols_float[c]], alpha=0.25, color=colors[c], label=None);
+    plt.axvline(x=end_training, color='k', linestyle=':');
+    plt.text(full_timeseries.index[int((full_timeseries.shape[0]-n_weeks*prediction_length)*0.75)], full_timeseries.max().max()/2, 'Train');
+    plt.text(full_timeseries.index[full_timeseries.shape[0]-int(n_weeks*prediction_length/2)], full_timeseries.max().max()/2, 'Test');
+    plt.xlabel('Time');
+    plt.show()
 
 
 
-
-.. parsed-literal::
-
-    [<matplotlib.lines.Line2D at 0x7f997e58d240>,
-     <matplotlib.lines.Line2D at 0x7f997e5b2ef0>,
-     <matplotlib.lines.Line2D at 0x7f997e5c00f0>]
+.. image:: output_44_0.png
 
 
-
-
-.. image:: output_33_1.png
-
-
-.. code:: python3
-
-    %%local
-    full_timeseries.isna().sum()
-
-
-
-
-.. parsed-literal::
-
-    green       0
-    yellow      0
-    full_fhv    0
-    dtype: int64
-
-
-
-.. code:: python3
+.. code:: python
 
     %%local
     import json
     import boto3
-    
-    bucket = 'sagemaker-us-east-1-783526147575'
-    key_prefix = '2019workshop/'
-    
+
+    end_training = full_timeseries.index[-n_weeks*prediction_length]
+    print('end training time', end_training)
+
+    time_series = []
+    for ts in full_timeseries.columns:
+        time_series.append(full_timeseries[ts])
+
+    time_series_training = []
+    for ts in full_timeseries.columns:
+        time_series_training.append(full_timeseries.loc[:end_training][ts])
+
+    import sagemaker
+    sagemaker_session = sagemaker.Session()
+    bucket = sagemaker_session.default_bucket()
+
+    key_prefix = '2019workshop-deepar/'
+
     s3_client = boto3.client('s3')
     def series_to_obj(ts, cat=None):
         obj = {"start": str(ts.index[0]), "target": list(ts)}
         if cat:
             obj["cat"] = cat
         return obj
-    
+
     def series_to_jsonline(ts, cat=None):
         return json.dumps(series_to_obj(ts, cat))
-    
+
     encoding = "utf-8"
     data = ''
-    
+
     for ts in time_series_training:
         data = data + series_to_jsonline(ts)
         data = data + '\n'
-        
+
     s3_client.put_object(Body=data.encode(encoding), Bucket=bucket, Key=key_prefix + 'data/train/train.json')
-        
-    
+
+
     data = ''
     for ts in time_series:
         data = data + series_to_jsonline(ts)
         data = data + '\n'
-    
+
     s3_client.put_object(Body=data.encode(encoding), Bucket=bucket, Key=key_prefix + 'data/test/test.json')
 
+
+
+.. parsed-literal::
+
+    end training time 2019-05-06 00:00:00
 
 
 
 
 .. parsed-literal::
 
-    {'ResponseMetadata': {'RequestId': '533CAC49C7F43336',
-      'HostId': 'wun5bVNSWv0/sYGWYwaFX6IqKmB0Pco6s4DiChHTLOeGOZykZKp3/cNmzB7uMmdoa/sx3m/ITTo=',
+    {'ResponseMetadata': {'RequestId': '080F10A207131EEC',
+      'HostId': 'QunHqencw40NUjnNNHS/tFdSLN45HBmNRNPG2VNRqUxbZAZV3gg1Yc5caHB1IN+bl0VnnLNinaY=',
       'HTTPStatusCode': 200,
-      'HTTPHeaders': {'x-amz-id-2': 'wun5bVNSWv0/sYGWYwaFX6IqKmB0Pco6s4DiChHTLOeGOZykZKp3/cNmzB7uMmdoa/sx3m/ITTo=',
-       'x-amz-request-id': '533CAC49C7F43336',
-       'date': 'Sun, 13 Oct 2019 01:06:23 GMT',
-       'etag': '"22723dba9b8f7c7e73c73b67e8ed22f6"',
+      'HTTPHeaders': {'x-amz-id-2': 'QunHqencw40NUjnNNHS/tFdSLN45HBmNRNPG2VNRqUxbZAZV3gg1Yc5caHB1IN+bl0VnnLNinaY=',
+       'x-amz-request-id': '080F10A207131EEC',
+       'date': 'Sat, 30 Nov 2019 16:26:35 GMT',
+       'etag': '"3d0c723b9f128d637f003391b7546c16"',
        'content-length': '0',
        'server': 'AmazonS3'},
       'RetryAttempts': 0},
-     'ETag': '"22723dba9b8f7c7e73c73b67e8ed22f6"'}
+     'ETag': '"3d0c723b9f128d637f003391b7546c16"'}
 
 
 
-.. code:: python3
+Setting our data and output locations
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code:: python
 
     %%local
     import boto3
@@ -680,26 +778,20 @@ for-hire-vehicles and for-hire-vehicles high volume.
     from sagemaker import get_execution_role
     sagemaker_session = sagemaker.Session()
     role = get_execution_role()
-    
+
     s3_data_path = "{}/{}data".format(bucket, key_prefix)
     s3_output_path = "{}/{}output".format(bucket, key_prefix)
-    print('Data location: %s'%s3_data_path)
-    print('Output location: %s'%s3_output_path)
 
+Setting up the DeepAR Algorithm settings
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. parsed-literal::
-
-    Data location: sagemaker-us-east-1-783526147575/2019workshop/data
-    Output location: sagemaker-us-east-1-783526147575/2019workshop/output
-
-
-.. code:: python3
+.. code:: python
 
     %%local
-    
+
     region = sagemaker_session.boto_region_name
     image_name = sagemaker.amazon.amazon_estimator.get_image_uri(region, "forecasting-deepar", "latest")
-    
+
     estimator = sagemaker.estimator.Estimator(
         sagemaker_session=sagemaker_session,
         image_name=image_name,
@@ -710,11 +802,11 @@ for-hire-vehicles and for-hire-vehicles high volume.
         output_path="s3://" + s3_output_path
     )
 
-.. code:: python3
+    ## context_length = The number of time-points that the model gets to see before making the prediction.
+    context_length = 14
 
-    %%local
     hyperparameters = {
-        "time_freq": freq,
+        "time_freq": "D",
         "context_length": str(context_length),
         "prediction_length": str(prediction_length),
         "num_cells": "40",
@@ -726,1058 +818,786 @@ for-hire-vehicles and for-hire-vehicles high volume.
         "dropout_rate": "0.05",
         "early_stopping_patience": "10"
     }
-    
+
     estimator.set_hyperparameters(**hyperparameters)
 
-.. code:: python3
+Kicking off the training
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code:: python
 
     %%local
-    data_channels = {
+
+    estimator.fit(inputs={
         "train": "s3://{}/train/".format(s3_data_path),
         "test": "s3://{}/test/".format(s3_data_path)
-    }
-    
-    estimator.fit(inputs=data_channels)
+    })
 
 
 .. parsed-literal::
 
-    2019-10-13 01:06:28 Starting - Starting the training job...
-    2019-10-13 01:06:30 Starting - Launching requested ML instances......
-    2019-10-13 01:07:33 Starting - Preparing the instances for training...
-    2019-10-13 01:08:11 Downloading - Downloading input data...
-    2019-10-13 01:08:52 Training - Training image download completed. Training in progress..[31mArguments: train[0m
-    [31m[10/13/2019 01:08:54 INFO 140349257213760] Reading default configuration from /opt/amazon/lib/python3.7/site-packages/algorithm/resources/default-input.json: {u'num_dynamic_feat': u'auto', u'dropout_rate': u'0.10', u'mini_batch_size': u'128', u'test_quantiles': u'[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]', u'_tuning_objective_metric': u'', u'_num_gpus': u'auto', u'num_eval_samples': u'100', u'learning_rate': u'0.001', u'num_cells': u'40', u'num_layers': u'2', u'embedding_dimension': u'10', u'_kvstore': u'auto', u'_num_kv_servers': u'auto', u'cardinality': u'auto', u'likelihood': u'student-t', u'early_stopping_patience': u''}[0m
-    [31m[10/13/2019 01:08:54 INFO 140349257213760] Reading provided configuration from /opt/ml/input/config/hyperparameters.json: {u'dropout_rate': u'0.05', u'learning_rate': u'0.001', u'num_cells': u'40', u'prediction_length': u'12', u'epochs': u'100', u'time_freq': u'7D', u'context_length': u'12', u'num_layers': u'3', u'mini_batch_size': u'32', u'likelihood': u'gaussian', u'early_stopping_patience': u'10'}[0m
-    [31m[10/13/2019 01:08:54 INFO 140349257213760] Final configuration: {u'dropout_rate': u'0.05', u'test_quantiles': u'[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]', u'_tuning_objective_metric': u'', u'num_eval_samples': u'100', u'learning_rate': u'0.001', u'num_layers': u'3', u'epochs': u'100', u'embedding_dimension': u'10', u'num_cells': u'40', u'_num_kv_servers': u'auto', u'mini_batch_size': u'32', u'likelihood': u'gaussian', u'num_dynamic_feat': u'auto', u'cardinality': u'auto', u'_num_gpus': u'auto', u'prediction_length': u'12', u'time_freq': u'7D', u'context_length': u'12', u'_kvstore': u'auto', u'early_stopping_patience': u'10'}[0m
+    2019-11-30 16:26:45 Starting - Starting the training job...
+    2019-11-30 16:27:13 Starting - Launching requested ML instances.........
+    2019-11-30 16:28:18 Starting - Preparing the instances for training...
+    2019-11-30 16:29:07 Downloading - Downloading input data...
+    2019-11-30 16:29:41 Training - Training image download completed. Training in progress..[31mArguments: train[0m
+    [31m[11/30/2019 16:29:43 INFO 140657760761664] Reading default configuration from /opt/amazon/lib/python.7/site-packages/algorithm/resources/default-input.json: {u'num_dynamic_feat': u'auto', u'dropout_rate': u'0.10', u'mini_batch_size': u'128', u'test_quantiles': u'[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]', u'_tuning_objective_metric': u'', u'_num_gpus': u'auto', u'num_eval_samples': u'100', u'learning_rate': u'0.001', u'num_cells': u'40', u'num_layers': u'2', u'embedding_dimension': u'10', u'_kvstore': u'auto', u'_num_kv_servers': u'auto', u'cardinality': u'auto', u'likelihood': u'student-t', u'early_stopping_patience': u''}[0m
+    [31m[11/30/2019 16:29:43 INFO 140657760761664] Reading provided configuration from /opt/ml/input/config/hyperparameters.json: {u'dropout_rate': u'0.05', u'learning_rate': u'0.001', u'num_cells': u'40', u'prediction_length': u'14', u'epochs': u'100', u'time_freq': u'D', u'context_length': u'14', u'num_layers': u'3', u'mini_batch_size': u'32', u'likelihood': u'gaussian', u'early_stopping_patience': u'10'}[0m
+    [31m[11/30/2019 16:29:43 INFO 140657760761664] Final configuration: {u'dropout_rate': u'0.05', u'test_quantiles': u'[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]', u'_tuning_objective_metric': u'', u'num_eval_samples': u'100', u'learning_rate': u'0.001', u'num_layers': u'3', u'epochs': u'100', u'embedding_dimension': u'10', u'num_cells': u'40', u'_num_kv_servers': u'auto', u'mini_batch_size': u'32', u'likelihood': u'gaussian', u'num_dynamic_feat': u'auto', u'cardinality': u'auto', u'_num_gpus': u'auto', u'prediction_length': u'14', u'time_freq': u'D', u'context_length': u'14', u'_kvstore': u'auto', u'early_stopping_patience': u'10'}[0m
     [31mProcess 1 is a worker.[0m
-    [31m[10/13/2019 01:08:54 INFO 140349257213760] Detected entry point for worker worker[0m
-    [31m[10/13/2019 01:08:54 INFO 140349257213760] Using early stopping with patience 10[0m
-    [31m[10/13/2019 01:08:54 INFO 140349257213760] [cardinality=auto] `cat` field was NOT found in the file `/opt/ml/input/data/train/train.json` and will NOT be used for training.[0m
-    [31m[10/13/2019 01:08:54 INFO 140349257213760] [num_dynamic_feat=auto] `dynamic_feat` field was NOT found in the file `/opt/ml/input/data/train/train.json` and will NOT be used for training.[0m
-    [31m[10/13/2019 01:08:54 INFO 140349257213760] Training set statistics:[0m
-    [31m[10/13/2019 01:08:54 INFO 140349257213760] Integer time series[0m
-    [31m[10/13/2019 01:08:54 INFO 140349257213760] number of time series: 3[0m
-    [31m[10/13/2019 01:08:54 INFO 140349257213760] number of observations: 1389[0m
-    [31m[10/13/2019 01:08:54 INFO 140349257213760] mean target length: 463[0m
-    [31m[10/13/2019 01:08:54 INFO 140349257213760] min/mean/max target: 6519.0/306392.25198/1037761.0[0m
-    [31m[10/13/2019 01:08:54 INFO 140349257213760] mean abs(target): 306392.25198[0m
-    [31m[10/13/2019 01:08:54 INFO 140349257213760] contains missing values: no[0m
-    [31m[10/13/2019 01:08:54 INFO 140349257213760] Small number of time series. Doing 10 number of passes over dataset per epoch.[0m
-    [31m[10/13/2019 01:08:54 INFO 140349257213760] Test set statistics:[0m
-    [31m[10/13/2019 01:08:54 INFO 140349257213760] Integer time series[0m
-    [31m[10/13/2019 01:08:54 INFO 140349257213760] number of time series: 3[0m
-    [31m[10/13/2019 01:08:54 INFO 140349257213760] number of observations: 1638[0m
-    [31m[10/13/2019 01:08:54 INFO 140349257213760] mean target length: 546[0m
-    [31m[10/13/2019 01:08:54 INFO 140349257213760] min/mean/max target: 6519.0/276000.449939/1037761.0[0m
-    [31m[10/13/2019 01:08:54 INFO 140349257213760] mean abs(target): 276000.449939[0m
-    [31m[10/13/2019 01:08:54 INFO 140349257213760] contains missing values: no[0m
-    [31m[10/13/2019 01:08:54 INFO 140349257213760] nvidia-smi took: 0.0251710414886 secs to identify 0 gpus[0m
-    [31m[10/13/2019 01:08:54 INFO 140349257213760] Number of GPUs being used: 0[0m
-    [31m[10/13/2019 01:08:54 INFO 140349257213760] Create Store: local[0m
-    [31m#metrics {"Metrics": {"get_graph.time": {"count": 1, "max": 58.8841438293457, "sum": 58.8841438293457, "min": 58.8841438293457}}, "EndTime": 1570928934.819781, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928934.75987}
-    [0m
-    [31m[10/13/2019 01:08:54 INFO 140349257213760] Number of GPUs being used: 0[0m
-    [31m#metrics {"Metrics": {"initialize.time": {"count": 1, "max": 152.7881622314453, "sum": 152.7881622314453, "min": 152.7881622314453}}, "EndTime": 1570928934.912806, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928934.819842}
-    [0m
-    [31m[10/13/2019 01:08:55 INFO 140349257213760] Epoch[0] Batch[0] avg_epoch_loss=14.230526[0m
-    [31m[10/13/2019 01:08:55 INFO 140349257213760] #quality_metric: host=algo-1, epoch=0, batch=0 train loss <loss>=14.2305259705[0m
-    [31m[10/13/2019 01:08:55 INFO 140349257213760] Epoch[0] Batch[5] avg_epoch_loss=13.396269[0m
-    [31m[10/13/2019 01:08:55 INFO 140349257213760] #quality_metric: host=algo-1, epoch=0, batch=5 train loss <loss>=13.3962691625[0m
-    [31m[10/13/2019 01:08:55 INFO 140349257213760] Epoch[0] Batch [5]#011Speed: 1413.39 samples/sec#011loss=13.396269[0m
-    [31m[10/13/2019 01:08:55 INFO 140349257213760] processed a total of 310 examples[0m
-    [31m#metrics {"Metrics": {"epochs": {"count": 1, "max": 100, "sum": 100.0, "min": 100}, "update.time": {"count": 1, "max": 342.03290939331055, "sum": 342.03290939331055, "min": 342.03290939331055}}, "EndTime": 1570928935.254969, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928934.912864}
-    [0m
-    [31m[10/13/2019 01:08:55 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=905.99818833 records/second[0m
-    [31m[10/13/2019 01:08:55 INFO 140349257213760] #progress_metric: host=algo-1, completed 1 % of epochs[0m
-    [31m[10/13/2019 01:08:55 INFO 140349257213760] #quality_metric: host=algo-1, epoch=0, train loss <loss>=13.2752533913[0m
-    [31m[10/13/2019 01:08:55 INFO 140349257213760] best epoch loss so far[0m
-    [31m[10/13/2019 01:08:55 INFO 140349257213760] Saved checkpoint to "/opt/ml/model/state_b08c6e3f-2f5b-4fa5-8434-e0257fff408f-0000.params"[0m
-    [31m#metrics {"Metrics": {"state.serialize.time": {"count": 1, "max": 19.212007522583008, "sum": 19.212007522583008, "min": 19.212007522583008}}, "EndTime": 1570928935.274837, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928935.255063}
-    [0m
-    [31m[10/13/2019 01:08:55 INFO 140349257213760] Epoch[1] Batch[0] avg_epoch_loss=13.038147[0m
-    [31m[10/13/2019 01:08:55 INFO 140349257213760] #quality_metric: host=algo-1, epoch=1, batch=0 train loss <loss>=13.0381469727[0m
-    [31m[10/13/2019 01:08:55 INFO 140349257213760] Epoch[1] Batch[5] avg_epoch_loss=12.510783[0m
-    [31m[10/13/2019 01:08:55 INFO 140349257213760] #quality_metric: host=algo-1, epoch=1, batch=5 train loss <loss>=12.5107830365[0m
-    [31m[10/13/2019 01:08:55 INFO 140349257213760] Epoch[1] Batch [5]#011Speed: 1097.67 samples/sec#011loss=12.510783[0m
-    [31m[10/13/2019 01:08:55 INFO 140349257213760] processed a total of 293 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 336.61389350891113, "sum": 336.61389350891113, "min": 336.61389350891113}}, "EndTime": 1570928935.611579, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928935.274905}
-    [0m
-    [31m[10/13/2019 01:08:55 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=870.125939562 records/second[0m
-    [31m[10/13/2019 01:08:55 INFO 140349257213760] #progress_metric: host=algo-1, completed 2 % of epochs[0m
-    [31m[10/13/2019 01:08:55 INFO 140349257213760] #quality_metric: host=algo-1, epoch=1, train loss <loss>=12.5087955475[0m
-    [31m[10/13/2019 01:08:55 INFO 140349257213760] best epoch loss so far[0m
-    [31m[10/13/2019 01:08:55 INFO 140349257213760] Saved checkpoint to "/opt/ml/model/state_7bc3e2f7-8347-4aa2-987e-be042401c820-0000.params"[0m
-    [31m#metrics {"Metrics": {"state.serialize.time": {"count": 1, "max": 13.906002044677734, "sum": 13.906002044677734, "min": 13.906002044677734}}, "EndTime": 1570928935.626095, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928935.61166}
-    [0m
-    [31m[10/13/2019 01:08:55 INFO 140349257213760] Epoch[2] Batch[0] avg_epoch_loss=12.315042[0m
-    [31m[10/13/2019 01:08:55 INFO 140349257213760] #quality_metric: host=algo-1, epoch=2, batch=0 train loss <loss>=12.3150424957[0m
-    [31m[10/13/2019 01:08:55 INFO 140349257213760] Epoch[2] Batch[5] avg_epoch_loss=11.729630[0m
-    [31m[10/13/2019 01:08:55 INFO 140349257213760] #quality_metric: host=algo-1, epoch=2, batch=5 train loss <loss>=11.7296298345[0m
-    [31m[10/13/2019 01:08:55 INFO 140349257213760] Epoch[2] Batch [5]#011Speed: 1105.02 samples/sec#011loss=11.729630[0m
-    [31m[10/13/2019 01:08:55 INFO 140349257213760] processed a total of 280 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 308.77208709716797, "sum": 308.77208709716797, "min": 308.77208709716797}}, "EndTime": 1570928935.934985, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928935.626158}
-    [0m
-    [31m[10/13/2019 01:08:55 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=906.57131653 records/second[0m
-    [31m[10/13/2019 01:08:55 INFO 140349257213760] #progress_metric: host=algo-1, completed 3 % of epochs[0m
-    [31m[10/13/2019 01:08:55 INFO 140349257213760] #quality_metric: host=algo-1, epoch=2, train loss <loss>=11.6596869363[0m
-    [31m[10/13/2019 01:08:55 INFO 140349257213760] best epoch loss so far[0m
-    [31m[10/13/2019 01:08:55 INFO 140349257213760] Saved checkpoint to "/opt/ml/model/state_c97b1657-ccc3-4bf5-9af9-679c4a3fab2e-0000.params"[0m
-    [31m#metrics {"Metrics": {"state.serialize.time": {"count": 1, "max": 15.043973922729492, "sum": 15.043973922729492, "min": 15.043973922729492}}, "EndTime": 1570928935.950532, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928935.935037}
-    [0m
-    [31m[10/13/2019 01:08:56 INFO 140349257213760] Epoch[3] Batch[0] avg_epoch_loss=12.098345[0m
-    [31m[10/13/2019 01:08:56 INFO 140349257213760] #quality_metric: host=algo-1, epoch=3, batch=0 train loss <loss>=12.0983448029[0m
-    [31m[10/13/2019 01:08:56 INFO 140349257213760] Epoch[3] Batch[5] avg_epoch_loss=11.794618[0m
-    [31m[10/13/2019 01:08:56 INFO 140349257213760] #quality_metric: host=algo-1, epoch=3, batch=5 train loss <loss>=11.7946181297[0m
-    [31m[10/13/2019 01:08:56 INFO 140349257213760] Epoch[3] Batch [5]#011Speed: 1144.26 samples/sec#011loss=11.794618[0m
-    [31m[10/13/2019 01:08:56 INFO 140349257213760] Epoch[3] Batch[10] avg_epoch_loss=11.770495[0m
-    [31m[10/13/2019 01:08:56 INFO 140349257213760] #quality_metric: host=algo-1, epoch=3, batch=10 train loss <loss>=11.7415468216[0m
-    [31m[10/13/2019 01:08:56 INFO 140349257213760] Epoch[3] Batch [10]#011Speed: 1185.11 samples/sec#011loss=11.741547[0m
-    [31m[10/13/2019 01:08:56 INFO 140349257213760] processed a total of 327 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 342.91791915893555, "sum": 342.91791915893555, "min": 342.91791915893555}}, "EndTime": 1570928936.293574, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928935.950597}
-    [0m
-    [31m[10/13/2019 01:08:56 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=953.28337426 records/second[0m
-    [31m[10/13/2019 01:08:56 INFO 140349257213760] #progress_metric: host=algo-1, completed 4 % of epochs[0m
-    [31m[10/13/2019 01:08:56 INFO 140349257213760] #quality_metric: host=algo-1, epoch=3, train loss <loss>=11.7704948079[0m
-    [31m[10/13/2019 01:08:56 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:08:56 INFO 140349257213760] Epoch[4] Batch[0] avg_epoch_loss=11.516387[0m
-    [31m[10/13/2019 01:08:56 INFO 140349257213760] #quality_metric: host=algo-1, epoch=4, batch=0 train loss <loss>=11.5163869858[0m
-    [31m[10/13/2019 01:08:56 INFO 140349257213760] Epoch[4] Batch[5] avg_epoch_loss=11.536468[0m
-    [31m[10/13/2019 01:08:56 INFO 140349257213760] #quality_metric: host=algo-1, epoch=4, batch=5 train loss <loss>=11.536468188[0m
-    [31m[10/13/2019 01:08:56 INFO 140349257213760] Epoch[4] Batch [5]#011Speed: 1398.58 samples/sec#011loss=11.536468[0m
-    [31m[10/13/2019 01:08:56 INFO 140349257213760] Epoch[4] Batch[10] avg_epoch_loss=11.275103[0m
-    [31m[10/13/2019 01:08:56 INFO 140349257213760] #quality_metric: host=algo-1, epoch=4, batch=10 train loss <loss>=10.9614639282[0m
-    [31m[10/13/2019 01:08:56 INFO 140349257213760] Epoch[4] Batch [10]#011Speed: 1335.70 samples/sec#011loss=10.961464[0m
-    [31m[10/13/2019 01:08:56 INFO 140349257213760] processed a total of 330 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 308.86197090148926, "sum": 308.86197090148926, "min": 308.86197090148926}}, "EndTime": 1570928936.602987, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928936.293644}
-    [0m
-    [31m[10/13/2019 01:08:56 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1068.05423454 records/second[0m
-    [31m[10/13/2019 01:08:56 INFO 140349257213760] #progress_metric: host=algo-1, completed 5 % of epochs[0m
-    [31m[10/13/2019 01:08:56 INFO 140349257213760] #quality_metric: host=algo-1, epoch=4, train loss <loss>=11.2751026154[0m
-    [31m[10/13/2019 01:08:56 INFO 140349257213760] best epoch loss so far[0m
-    [31m[10/13/2019 01:08:56 INFO 140349257213760] Saved checkpoint to "/opt/ml/model/state_3421ade7-f0df-40a7-8582-3dec84128238-0000.params"[0m
-    [31m#metrics {"Metrics": {"state.serialize.time": {"count": 1, "max": 17.745018005371094, "sum": 17.745018005371094, "min": 17.745018005371094}}, "EndTime": 1570928936.621291, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928936.603063}
-    [0m
-    [31m[10/13/2019 01:08:56 INFO 140349257213760] Epoch[5] Batch[0] avg_epoch_loss=11.548022[0m
-    [31m[10/13/2019 01:08:56 INFO 140349257213760] #quality_metric: host=algo-1, epoch=5, batch=0 train loss <loss>=11.5480222702[0m
-    [31m[10/13/2019 01:08:56 INFO 140349257213760] Epoch[5] Batch[5] avg_epoch_loss=11.503839[0m
-    [31m[10/13/2019 01:08:56 INFO 140349257213760] #quality_metric: host=algo-1, epoch=5, batch=5 train loss <loss>=11.5038394928[0m
-    [31m[10/13/2019 01:08:56 INFO 140349257213760] Epoch[5] Batch [5]#011Speed: 1481.00 samples/sec#011loss=11.503839[0m
-    [31m[10/13/2019 01:08:56 INFO 140349257213760] processed a total of 308 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 279.6900272369385, "sum": 279.6900272369385, "min": 279.6900272369385}}, "EndTime": 1570928936.901091, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928936.621349}
-    [0m
-    [31m[10/13/2019 01:08:56 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1100.79027099 records/second[0m
-    [31m[10/13/2019 01:08:56 INFO 140349257213760] #progress_metric: host=algo-1, completed 6 % of epochs[0m
-    [31m[10/13/2019 01:08:56 INFO 140349257213760] #quality_metric: host=algo-1, epoch=5, train loss <loss>=11.3321397781[0m
-    [31m[10/13/2019 01:08:56 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:08:56 INFO 140349257213760] Epoch[6] Batch[0] avg_epoch_loss=12.038177[0m
-    [31m[10/13/2019 01:08:56 INFO 140349257213760] #quality_metric: host=algo-1, epoch=6, batch=0 train loss <loss>=12.0381765366[0m
-    [31m[10/13/2019 01:08:57 INFO 140349257213760] Epoch[6] Batch[5] avg_epoch_loss=11.437995[0m
-    [31m[10/13/2019 01:08:57 INFO 140349257213760] #quality_metric: host=algo-1, epoch=6, batch=5 train loss <loss>=11.4379946391[0m
-    [31m[10/13/2019 01:08:57 INFO 140349257213760] Epoch[6] Batch [5]#011Speed: 1480.63 samples/sec#011loss=11.437995[0m
-    [31m[10/13/2019 01:08:57 INFO 140349257213760] Epoch[6] Batch[10] avg_epoch_loss=11.475015[0m
-    [31m[10/13/2019 01:08:57 INFO 140349257213760] #quality_metric: host=algo-1, epoch=6, batch=10 train loss <loss>=11.5194402695[0m
-    [31m[10/13/2019 01:08:57 INFO 140349257213760] Epoch[6] Batch [10]#011Speed: 1341.27 samples/sec#011loss=11.519440[0m
-    [31m[10/13/2019 01:08:57 INFO 140349257213760] processed a total of 334 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 315.6430721282959, "sum": 315.6430721282959, "min": 315.6430721282959}}, "EndTime": 1570928937.217269, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928936.901166}
-    [0m
-    [31m[10/13/2019 01:08:57 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1057.81206115 records/second[0m
-    [31m[10/13/2019 01:08:57 INFO 140349257213760] #progress_metric: host=algo-1, completed 7 % of epochs[0m
-    [31m[10/13/2019 01:08:57 INFO 140349257213760] #quality_metric: host=algo-1, epoch=6, train loss <loss>=11.4750153802[0m
-    [31m[10/13/2019 01:08:57 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:08:57 INFO 140349257213760] Epoch[7] Batch[0] avg_epoch_loss=11.779601[0m
-    [31m[10/13/2019 01:08:57 INFO 140349257213760] #quality_metric: host=algo-1, epoch=7, batch=0 train loss <loss>=11.7796010971[0m
-    [31m[10/13/2019 01:08:57 INFO 140349257213760] Epoch[7] Batch[5] avg_epoch_loss=11.353891[0m
-    [31m[10/13/2019 01:08:57 INFO 140349257213760] #quality_metric: host=algo-1, epoch=7, batch=5 train loss <loss>=11.353890578[0m
-    [31m[10/13/2019 01:08:57 INFO 140349257213760] Epoch[7] Batch [5]#011Speed: 1371.76 samples/sec#011loss=11.353891[0m
-    [31m[10/13/2019 01:08:57 INFO 140349257213760] processed a total of 312 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 293.6739921569824, "sum": 293.6739921569824, "min": 293.6739921569824}}, "EndTime": 1570928937.511439, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928937.217338}
-    [0m
-    [31m[10/13/2019 01:08:57 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1061.84911392 records/second[0m
-    [31m[10/13/2019 01:08:57 INFO 140349257213760] #progress_metric: host=algo-1, completed 8 % of epochs[0m
-    [31m[10/13/2019 01:08:57 INFO 140349257213760] #quality_metric: host=algo-1, epoch=7, train loss <loss>=11.2728459358[0m
-    [31m[10/13/2019 01:08:57 INFO 140349257213760] best epoch loss so far[0m
-    [31m[10/13/2019 01:08:57 INFO 140349257213760] Saved checkpoint to "/opt/ml/model/state_3b3f092f-2a2b-4416-9bba-f8e3de211597-0000.params"[0m
-    [31m#metrics {"Metrics": {"state.serialize.time": {"count": 1, "max": 18.151044845581055, "sum": 18.151044845581055, "min": 18.151044845581055}}, "EndTime": 1570928937.530351, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928937.511552}
-    [0m
-    [31m[10/13/2019 01:08:57 INFO 140349257213760] Epoch[8] Batch[0] avg_epoch_loss=11.804518[0m
-    [31m[10/13/2019 01:08:57 INFO 140349257213760] #quality_metric: host=algo-1, epoch=8, batch=0 train loss <loss>=11.804517746[0m
-    [31m[10/13/2019 01:08:57 INFO 140349257213760] Epoch[8] Batch[5] avg_epoch_loss=11.390380[0m
-    [31m[10/13/2019 01:08:57 INFO 140349257213760] #quality_metric: host=algo-1, epoch=8, batch=5 train loss <loss>=11.3903800646[0m
-    [31m[10/13/2019 01:08:57 INFO 140349257213760] Epoch[8] Batch [5]#011Speed: 1471.68 samples/sec#011loss=11.390380[0m
-    [31m[10/13/2019 01:08:57 INFO 140349257213760] processed a total of 305 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 302.9201030731201, "sum": 302.9201030731201, "min": 302.9201030731201}}, "EndTime": 1570928937.833402, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928937.530422}
-    [0m
-    [31m[10/13/2019 01:08:57 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1006.48749781 records/second[0m
-    [31m[10/13/2019 01:08:57 INFO 140349257213760] #progress_metric: host=algo-1, completed 9 % of epochs[0m
-    [31m[10/13/2019 01:08:57 INFO 140349257213760] #quality_metric: host=algo-1, epoch=8, train loss <loss>=11.3775391579[0m
-    [31m[10/13/2019 01:08:57 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:08:57 INFO 140349257213760] Epoch[9] Batch[0] avg_epoch_loss=12.535266[0m
-    [31m[10/13/2019 01:08:57 INFO 140349257213760] #quality_metric: host=algo-1, epoch=9, batch=0 train loss <loss>=12.5352659225[0m
-    [31m[10/13/2019 01:08:58 INFO 140349257213760] Epoch[9] Batch[5] avg_epoch_loss=11.678731[0m
-    [31m[10/13/2019 01:08:58 INFO 140349257213760] #quality_metric: host=algo-1, epoch=9, batch=5 train loss <loss>=11.6787311236[0m
-    [31m[10/13/2019 01:08:58 INFO 140349257213760] Epoch[9] Batch [5]#011Speed: 1024.09 samples/sec#011loss=11.678731[0m
-    [31m[10/13/2019 01:08:58 INFO 140349257213760] Epoch[9] Batch[10] avg_epoch_loss=11.565949[0m
-    [31m[10/13/2019 01:08:58 INFO 140349257213760] #quality_metric: host=algo-1, epoch=9, batch=10 train loss <loss>=11.4306106567[0m
-    [31m[10/13/2019 01:08:58 INFO 140349257213760] Epoch[9] Batch [10]#011Speed: 1123.30 samples/sec#011loss=11.430611[0m
-    [31m[10/13/2019 01:08:58 INFO 140349257213760] processed a total of 325 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 393.60809326171875, "sum": 393.60809326171875, "min": 393.60809326171875}}, "EndTime": 1570928938.227533, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928937.833481}
-    [0m
-    [31m[10/13/2019 01:08:58 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=825.461402538 records/second[0m
-    [31m[10/13/2019 01:08:58 INFO 140349257213760] #progress_metric: host=algo-1, completed 10 % of epochs[0m
-    [31m[10/13/2019 01:08:58 INFO 140349257213760] #quality_metric: host=algo-1, epoch=9, train loss <loss>=11.5659490932[0m
-    [31m[10/13/2019 01:08:58 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:08:58 INFO 140349257213760] Epoch[10] Batch[0] avg_epoch_loss=11.148903[0m
-    [31m[10/13/2019 01:08:58 INFO 140349257213760] #quality_metric: host=algo-1, epoch=10, batch=0 train loss <loss>=11.1489028931[0m
-    [31m[10/13/2019 01:08:58 INFO 140349257213760] Epoch[10] Batch[5] avg_epoch_loss=11.179388[0m
-    [31m[10/13/2019 01:08:58 INFO 140349257213760] #quality_metric: host=algo-1, epoch=10, batch=5 train loss <loss>=11.1793880463[0m
-    [31m[10/13/2019 01:08:58 INFO 140349257213760] Epoch[10] Batch [5]#011Speed: 995.45 samples/sec#011loss=11.179388[0m
-    [31m[10/13/2019 01:08:58 INFO 140349257213760] processed a total of 307 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 379.44698333740234, "sum": 379.44698333740234, "min": 379.44698333740234}}, "EndTime": 1570928938.60746, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928938.22761}
-    [0m
-    [31m[10/13/2019 01:08:58 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=808.839928818 records/second[0m
-    [31m[10/13/2019 01:08:58 INFO 140349257213760] #progress_metric: host=algo-1, completed 11 % of epochs[0m
-    [31m[10/13/2019 01:08:58 INFO 140349257213760] #quality_metric: host=algo-1, epoch=10, train loss <loss>=11.3231087685[0m
-    [31m[10/13/2019 01:08:58 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:08:58 INFO 140349257213760] Epoch[11] Batch[0] avg_epoch_loss=11.403782[0m
-    [31m[10/13/2019 01:08:58 INFO 140349257213760] #quality_metric: host=algo-1, epoch=11, batch=0 train loss <loss>=11.4037818909[0m
-    [31m[10/13/2019 01:08:58 INFO 140349257213760] Epoch[11] Batch[5] avg_epoch_loss=11.475471[0m
-    [31m[10/13/2019 01:08:58 INFO 140349257213760] #quality_metric: host=algo-1, epoch=11, batch=5 train loss <loss>=11.4754710197[0m
-    [31m[10/13/2019 01:08:58 INFO 140349257213760] Epoch[11] Batch [5]#011Speed: 1449.65 samples/sec#011loss=11.475471[0m
-    [31m[10/13/2019 01:08:58 INFO 140349257213760] processed a total of 320 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 280.7450294494629, "sum": 280.7450294494629, "min": 280.7450294494629}}, "EndTime": 1570928938.888701, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928938.607532}
-    [0m
-    [31m[10/13/2019 01:08:58 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1139.37821257 records/second[0m
-    [31m[10/13/2019 01:08:58 INFO 140349257213760] #progress_metric: host=algo-1, completed 12 % of epochs[0m
-    [31m[10/13/2019 01:08:58 INFO 140349257213760] #quality_metric: host=algo-1, epoch=11, train loss <loss>=11.413458252[0m
-    [31m[10/13/2019 01:08:58 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:08:58 INFO 140349257213760] Epoch[12] Batch[0] avg_epoch_loss=11.547842[0m
-    [31m[10/13/2019 01:08:58 INFO 140349257213760] #quality_metric: host=algo-1, epoch=12, batch=0 train loss <loss>=11.5478420258[0m
-    [31m[10/13/2019 01:08:59 INFO 140349257213760] Epoch[12] Batch[5] avg_epoch_loss=11.191356[0m
-    [31m[10/13/2019 01:08:59 INFO 140349257213760] #quality_metric: host=algo-1, epoch=12, batch=5 train loss <loss>=11.1913560232[0m
-    [31m[10/13/2019 01:08:59 INFO 140349257213760] Epoch[12] Batch [5]#011Speed: 1465.56 samples/sec#011loss=11.191356[0m
-    [31m[10/13/2019 01:08:59 INFO 140349257213760] Epoch[12] Batch[10] avg_epoch_loss=11.305026[0m
-    [31m[10/13/2019 01:08:59 INFO 140349257213760] #quality_metric: host=algo-1, epoch=12, batch=10 train loss <loss>=11.4414297104[0m
-    [31m[10/13/2019 01:08:59 INFO 140349257213760] Epoch[12] Batch [10]#011Speed: 1455.28 samples/sec#011loss=11.441430[0m
-    [31m[10/13/2019 01:08:59 INFO 140349257213760] processed a total of 321 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 297.95002937316895, "sum": 297.95002937316895, "min": 297.95002937316895}}, "EndTime": 1570928939.187186, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928938.888777}
-    [0m
-    [31m[10/13/2019 01:08:59 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1076.88102949 records/second[0m
-    [31m[10/13/2019 01:08:59 INFO 140349257213760] #progress_metric: host=algo-1, completed 13 % of epochs[0m
-    [31m[10/13/2019 01:08:59 INFO 140349257213760] #quality_metric: host=algo-1, epoch=12, train loss <loss>=11.305025881[0m
-    [31m[10/13/2019 01:08:59 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:08:59 INFO 140349257213760] Epoch[13] Batch[0] avg_epoch_loss=11.477967[0m
-    [31m[10/13/2019 01:08:59 INFO 140349257213760] #quality_metric: host=algo-1, epoch=13, batch=0 train loss <loss>=11.4779672623[0m
-    [31m[10/13/2019 01:08:59 INFO 140349257213760] Epoch[13] Batch[5] avg_epoch_loss=11.446265[0m
-    [31m[10/13/2019 01:08:59 INFO 140349257213760] #quality_metric: host=algo-1, epoch=13, batch=5 train loss <loss>=11.4462647438[0m
-    [31m[10/13/2019 01:08:59 INFO 140349257213760] Epoch[13] Batch [5]#011Speed: 1342.43 samples/sec#011loss=11.446265[0m
-    [31m[10/13/2019 01:08:59 INFO 140349257213760] processed a total of 266 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 262.6039981842041, "sum": 262.6039981842041, "min": 262.6039981842041}}, "EndTime": 1570928939.450307, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928939.187284}
-    [0m
-    [31m[10/13/2019 01:08:59 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1012.50457299 records/second[0m
-    [31m[10/13/2019 01:08:59 INFO 140349257213760] #progress_metric: host=algo-1, completed 14 % of epochs[0m
-    [31m[10/13/2019 01:08:59 INFO 140349257213760] #quality_metric: host=algo-1, epoch=13, train loss <loss>=11.5043666628[0m
-    [31m[10/13/2019 01:08:59 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:08:59 INFO 140349257213760] Epoch[14] Batch[0] avg_epoch_loss=11.441884[0m
-    [31m[10/13/2019 01:08:59 INFO 140349257213760] #quality_metric: host=algo-1, epoch=14, batch=0 train loss <loss>=11.4418840408[0m
-    [31m[10/13/2019 01:08:59 INFO 140349257213760] Epoch[14] Batch[5] avg_epoch_loss=11.319520[0m
-    [31m[10/13/2019 01:08:59 INFO 140349257213760] #quality_metric: host=algo-1, epoch=14, batch=5 train loss <loss>=11.3195203145[0m
-    [31m[10/13/2019 01:08:59 INFO 140349257213760] Epoch[14] Batch [5]#011Speed: 1472.97 samples/sec#011loss=11.319520[0m
-    [31m[10/13/2019 01:08:59 INFO 140349257213760] Epoch[14] Batch[10] avg_epoch_loss=11.292421[0m
-    [31m[10/13/2019 01:08:59 INFO 140349257213760] #quality_metric: host=algo-1, epoch=14, batch=10 train loss <loss>=11.2599012375[0m
-    [31m[10/13/2019 01:08:59 INFO 140349257213760] Epoch[14] Batch [10]#011Speed: 1439.72 samples/sec#011loss=11.259901[0m
-    [31m[10/13/2019 01:08:59 INFO 140349257213760] processed a total of 330 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 298.2139587402344, "sum": 298.2139587402344, "min": 298.2139587402344}}, "EndTime": 1570928939.74903, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928939.450382}
-    [0m
-    [31m[10/13/2019 01:08:59 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1106.17680507 records/second[0m
-    [31m[10/13/2019 01:08:59 INFO 140349257213760] #progress_metric: host=algo-1, completed 15 % of epochs[0m
-    [31m[10/13/2019 01:08:59 INFO 140349257213760] #quality_metric: host=algo-1, epoch=14, train loss <loss>=11.2924207341[0m
-    [31m[10/13/2019 01:08:59 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:08:59 INFO 140349257213760] Epoch[15] Batch[0] avg_epoch_loss=11.122583[0m
-    [31m[10/13/2019 01:08:59 INFO 140349257213760] #quality_metric: host=algo-1, epoch=15, batch=0 train loss <loss>=11.1225833893[0m
-    [31m[10/13/2019 01:08:59 INFO 140349257213760] Epoch[15] Batch[5] avg_epoch_loss=11.178948[0m
-    [31m[10/13/2019 01:08:59 INFO 140349257213760] #quality_metric: host=algo-1, epoch=15, batch=5 train loss <loss>=11.1789482435[0m
-    [31m[10/13/2019 01:08:59 INFO 140349257213760] Epoch[15] Batch [5]#011Speed: 1477.71 samples/sec#011loss=11.178948[0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] Epoch[15] Batch[10] avg_epoch_loss=11.215369[0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] #quality_metric: host=algo-1, epoch=15, batch=10 train loss <loss>=11.2590736389[0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] Epoch[15] Batch [10]#011Speed: 1211.55 samples/sec#011loss=11.259074[0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] processed a total of 335 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 328.4869194030762, "sum": 328.4869194030762, "min": 328.4869194030762}}, "EndTime": 1570928940.078006, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928939.749106}
-    [0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1019.49231875 records/second[0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] #progress_metric: host=algo-1, completed 16 % of epochs[0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] #quality_metric: host=algo-1, epoch=15, train loss <loss>=11.2153688778[0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] best epoch loss so far[0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] Saved checkpoint to "/opt/ml/model/state_40348bb8-659f-40ea-a6d4-f0d718b49afe-0000.params"[0m
-    [31m#metrics {"Metrics": {"state.serialize.time": {"count": 1, "max": 17.72308349609375, "sum": 17.72308349609375, "min": 17.72308349609375}}, "EndTime": 1570928940.096258, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928940.07808}
-    [0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] Epoch[16] Batch[0] avg_epoch_loss=11.406569[0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] #quality_metric: host=algo-1, epoch=16, batch=0 train loss <loss>=11.4065685272[0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] Epoch[16] Batch[5] avg_epoch_loss=11.191870[0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] #quality_metric: host=algo-1, epoch=16, batch=5 train loss <loss>=11.1918702126[0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] Epoch[16] Batch [5]#011Speed: 1288.68 samples/sec#011loss=11.191870[0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] processed a total of 285 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 274.0027904510498, "sum": 274.0027904510498, "min": 274.0027904510498}}, "EndTime": 1570928940.370375, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928940.096318}
-    [0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1039.70657331 records/second[0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] #progress_metric: host=algo-1, completed 17 % of epochs[0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] #quality_metric: host=algo-1, epoch=16, train loss <loss>=11.0759080251[0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] best epoch loss so far[0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] Saved checkpoint to "/opt/ml/model/state_6ad6c9b5-af87-471a-b521-6cc1f7adf1ff-0000.params"[0m
-    [31m#metrics {"Metrics": {"state.serialize.time": {"count": 1, "max": 17.309188842773438, "sum": 17.309188842773438, "min": 17.309188842773438}}, "EndTime": 1570928940.388231, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928940.370453}
-    [0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] Epoch[17] Batch[0] avg_epoch_loss=11.598834[0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] #quality_metric: host=algo-1, epoch=17, batch=0 train loss <loss>=11.5988340378[0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] Epoch[17] Batch[5] avg_epoch_loss=11.097498[0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] #quality_metric: host=algo-1, epoch=17, batch=5 train loss <loss>=11.0974984169[0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] Epoch[17] Batch [5]#011Speed: 1427.69 samples/sec#011loss=11.097498[0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] Epoch[17] Batch[10] avg_epoch_loss=11.090322[0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] #quality_metric: host=algo-1, epoch=17, batch=10 train loss <loss>=11.0817113876[0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] Epoch[17] Batch [10]#011Speed: 1371.42 samples/sec#011loss=11.081711[0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] processed a total of 324 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 297.698974609375, "sum": 297.698974609375, "min": 297.698974609375}}, "EndTime": 1570928940.686043, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928940.388289}
-    [0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1087.91643497 records/second[0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] #progress_metric: host=algo-1, completed 18 % of epochs[0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] #quality_metric: host=algo-1, epoch=17, train loss <loss>=11.0903224945[0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] Epoch[18] Batch[0] avg_epoch_loss=11.854380[0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] #quality_metric: host=algo-1, epoch=18, batch=0 train loss <loss>=11.8543796539[0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] Epoch[18] Batch[5] avg_epoch_loss=11.186023[0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] #quality_metric: host=algo-1, epoch=18, batch=5 train loss <loss>=11.1860227585[0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] Epoch[18] Batch [5]#011Speed: 1435.70 samples/sec#011loss=11.186023[0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] processed a total of 319 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 266.28708839416504, "sum": 266.28708839416504, "min": 266.28708839416504}}, "EndTime": 1570928940.952905, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928940.686122}
-    [0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1197.49201528 records/second[0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] #progress_metric: host=algo-1, completed 19 % of epochs[0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] #quality_metric: host=algo-1, epoch=18, train loss <loss>=11.2814056396[0m
-    [31m[10/13/2019 01:09:00 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:09:01 INFO 140349257213760] Epoch[19] Batch[0] avg_epoch_loss=11.298664[0m
-    [31m[10/13/2019 01:09:01 INFO 140349257213760] #quality_metric: host=algo-1, epoch=19, batch=0 train loss <loss>=11.298664093[0m
-    [31m[10/13/2019 01:09:01 INFO 140349257213760] Epoch[19] Batch[5] avg_epoch_loss=11.067878[0m
-    [31m[10/13/2019 01:09:01 INFO 140349257213760] #quality_metric: host=algo-1, epoch=19, batch=5 train loss <loss>=11.0678784053[0m
-    [31m[10/13/2019 01:09:01 INFO 140349257213760] Epoch[19] Batch [5]#011Speed: 1419.64 samples/sec#011loss=11.067878[0m
-    [31m[10/13/2019 01:09:01 INFO 140349257213760] Epoch[19] Batch[10] avg_epoch_loss=11.161810[0m
-    [31m[10/13/2019 01:09:01 INFO 140349257213760] #quality_metric: host=algo-1, epoch=19, batch=10 train loss <loss>=11.2745288849[0m
-    [31m[10/13/2019 01:09:01 INFO 140349257213760] Epoch[19] Batch [10]#011Speed: 1064.78 samples/sec#011loss=11.274529[0m
-    [31m[10/13/2019 01:09:01 INFO 140349257213760] processed a total of 326 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 327.87299156188965, "sum": 327.87299156188965, "min": 327.87299156188965}}, "EndTime": 1570928941.281332, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928940.952973}
-    [0m
-    [31m[10/13/2019 01:09:01 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=993.908010618 records/second[0m
-    [31m[10/13/2019 01:09:01 INFO 140349257213760] #progress_metric: host=algo-1, completed 20 % of epochs[0m
-    [31m[10/13/2019 01:09:01 INFO 140349257213760] #quality_metric: host=algo-1, epoch=19, train loss <loss>=11.1618104415[0m
-    [31m[10/13/2019 01:09:01 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:09:01 INFO 140349257213760] Epoch[20] Batch[0] avg_epoch_loss=11.365217[0m
-    [31m[10/13/2019 01:09:01 INFO 140349257213760] #quality_metric: host=algo-1, epoch=20, batch=0 train loss <loss>=11.3652172089[0m
-    [31m[10/13/2019 01:09:01 INFO 140349257213760] Epoch[20] Batch[5] avg_epoch_loss=11.115574[0m
-    [31m[10/13/2019 01:09:01 INFO 140349257213760] #quality_metric: host=algo-1, epoch=20, batch=5 train loss <loss>=11.115574042[0m
-    [31m[10/13/2019 01:09:01 INFO 140349257213760] Epoch[20] Batch [5]#011Speed: 1321.11 samples/sec#011loss=11.115574[0m
-    [31m[10/13/2019 01:09:01 INFO 140349257213760] Epoch[20] Batch[10] avg_epoch_loss=11.109890[0m
-    [31m[10/13/2019 01:09:01 INFO 140349257213760] #quality_metric: host=algo-1, epoch=20, batch=10 train loss <loss>=11.103068924[0m
-    [31m[10/13/2019 01:09:01 INFO 140349257213760] Epoch[20] Batch [10]#011Speed: 1423.28 samples/sec#011loss=11.103069[0m
-    [31m[10/13/2019 01:09:01 INFO 140349257213760] processed a total of 353 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 341.29810333251953, "sum": 341.29810333251953, "min": 341.29810333251953}}, "EndTime": 1570928941.623216, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928941.281418}
-    [0m
-    [31m[10/13/2019 01:09:01 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1033.8689939 records/second[0m
-    [31m[10/13/2019 01:09:01 INFO 140349257213760] #progress_metric: host=algo-1, completed 21 % of epochs[0m
-    [31m[10/13/2019 01:09:01 INFO 140349257213760] #quality_metric: host=algo-1, epoch=20, train loss <loss>=11.1869925658[0m
-    [31m[10/13/2019 01:09:01 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:09:01 INFO 140349257213760] Epoch[21] Batch[0] avg_epoch_loss=11.407520[0m
-    [31m[10/13/2019 01:09:01 INFO 140349257213760] #quality_metric: host=algo-1, epoch=21, batch=0 train loss <loss>=11.4075202942[0m
-    [31m[10/13/2019 01:09:01 INFO 140349257213760] Epoch[21] Batch[5] avg_epoch_loss=11.430386[0m
-    [31m[10/13/2019 01:09:01 INFO 140349257213760] #quality_metric: host=algo-1, epoch=21, batch=5 train loss <loss>=11.4303855896[0m
-    [31m[10/13/2019 01:09:01 INFO 140349257213760] Epoch[21] Batch [5]#011Speed: 1092.00 samples/sec#011loss=11.430386[0m
-    [31m[10/13/2019 01:09:01 INFO 140349257213760] Epoch[21] Batch[10] avg_epoch_loss=11.350062[0m
-    [31m[10/13/2019 01:09:01 INFO 140349257213760] #quality_metric: host=algo-1, epoch=21, batch=10 train loss <loss>=11.2536737442[0m
-    [31m[10/13/2019 01:09:01 INFO 140349257213760] Epoch[21] Batch [10]#011Speed: 1363.42 samples/sec#011loss=11.253674[0m
-    [31m[10/13/2019 01:09:01 INFO 140349257213760] processed a total of 331 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 351.14407539367676, "sum": 351.14407539367676, "min": 351.14407539367676}}, "EndTime": 1570928941.974912, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928941.623318}
-    [0m
-    [31m[10/13/2019 01:09:01 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=942.343176823 records/second[0m
-    [31m[10/13/2019 01:09:01 INFO 140349257213760] #progress_metric: host=algo-1, completed 22 % of epochs[0m
-    [31m[10/13/2019 01:09:01 INFO 140349257213760] #quality_metric: host=algo-1, epoch=21, train loss <loss>=11.3500620235[0m
-    [31m[10/13/2019 01:09:01 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:09:02 INFO 140349257213760] Epoch[22] Batch[0] avg_epoch_loss=11.414325[0m
-    [31m[10/13/2019 01:09:02 INFO 140349257213760] #quality_metric: host=algo-1, epoch=22, batch=0 train loss <loss>=11.4143247604[0m
-    [31m[10/13/2019 01:09:02 INFO 140349257213760] Epoch[22] Batch[5] avg_epoch_loss=11.250442[0m
-    [31m[10/13/2019 01:09:02 INFO 140349257213760] #quality_metric: host=algo-1, epoch=22, batch=5 train loss <loss>=11.2504415512[0m
-    [31m[10/13/2019 01:09:02 INFO 140349257213760] Epoch[22] Batch [5]#011Speed: 1437.26 samples/sec#011loss=11.250442[0m
-    [31m[10/13/2019 01:09:02 INFO 140349257213760] processed a total of 307 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 285.0978374481201, "sum": 285.0978374481201, "min": 285.0978374481201}}, "EndTime": 1570928942.260525, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928941.974986}
-    [0m
-    [31m[10/13/2019 01:09:02 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1076.4074436 records/second[0m
-    [31m[10/13/2019 01:09:02 INFO 140349257213760] #progress_metric: host=algo-1, completed 23 % of epochs[0m
-    [31m[10/13/2019 01:09:02 INFO 140349257213760] #quality_metric: host=algo-1, epoch=22, train loss <loss>=11.5387071609[0m
-    [31m[10/13/2019 01:09:02 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:09:02 INFO 140349257213760] Epoch[23] Batch[0] avg_epoch_loss=11.245833[0m
-    [31m[10/13/2019 01:09:02 INFO 140349257213760] #quality_metric: host=algo-1, epoch=23, batch=0 train loss <loss>=11.2458333969[0m
-    [31m[10/13/2019 01:09:02 INFO 140349257213760] Epoch[23] Batch[5] avg_epoch_loss=11.346271[0m
-    [31m[10/13/2019 01:09:02 INFO 140349257213760] #quality_metric: host=algo-1, epoch=23, batch=5 train loss <loss>=11.3462708791[0m
-    [31m[10/13/2019 01:09:02 INFO 140349257213760] Epoch[23] Batch [5]#011Speed: 1254.01 samples/sec#011loss=11.346271[0m
-    [31m[10/13/2019 01:09:02 INFO 140349257213760] Epoch[23] Batch[10] avg_epoch_loss=11.229798[0m
-    [31m[10/13/2019 01:09:02 INFO 140349257213760] #quality_metric: host=algo-1, epoch=23, batch=10 train loss <loss>=11.0900295258[0m
-    [31m[10/13/2019 01:09:02 INFO 140349257213760] Epoch[23] Batch [10]#011Speed: 1123.45 samples/sec#011loss=11.090030[0m
-    [31m[10/13/2019 01:09:02 INFO 140349257213760] processed a total of 328 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 348.48594665527344, "sum": 348.48594665527344, "min": 348.48594665527344}}, "EndTime": 1570928942.609517, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928942.260601}
-    [0m
-    [31m[10/13/2019 01:09:02 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=940.911872164 records/second[0m
-    [31m[10/13/2019 01:09:02 INFO 140349257213760] #progress_metric: host=algo-1, completed 24 % of epochs[0m
-    [31m[10/13/2019 01:09:02 INFO 140349257213760] #quality_metric: host=algo-1, epoch=23, train loss <loss>=11.2297975367[0m
-    [31m[10/13/2019 01:09:02 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:09:02 INFO 140349257213760] Epoch[24] Batch[0] avg_epoch_loss=11.515247[0m
-    [31m[10/13/2019 01:09:02 INFO 140349257213760] #quality_metric: host=algo-1, epoch=24, batch=0 train loss <loss>=11.515247345[0m
-    [31m[10/13/2019 01:09:02 INFO 140349257213760] Epoch[24] Batch[5] avg_epoch_loss=11.316037[0m
-    [31m[10/13/2019 01:09:02 INFO 140349257213760] #quality_metric: host=algo-1, epoch=24, batch=5 train loss <loss>=11.3160374959[0m
-    [31m[10/13/2019 01:09:02 INFO 140349257213760] Epoch[24] Batch [5]#011Speed: 1266.78 samples/sec#011loss=11.316037[0m
-    [31m[10/13/2019 01:09:02 INFO 140349257213760] processed a total of 314 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 299.35503005981445, "sum": 299.35503005981445, "min": 299.35503005981445}}, "EndTime": 1570928942.909366, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928942.609595}
-    [0m
-    [31m[10/13/2019 01:09:02 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1048.51923304 records/second[0m
-    [31m[10/13/2019 01:09:02 INFO 140349257213760] #progress_metric: host=algo-1, completed 25 % of epochs[0m
-    [31m[10/13/2019 01:09:02 INFO 140349257213760] #quality_metric: host=algo-1, epoch=24, train loss <loss>=11.1595122337[0m
-    [31m[10/13/2019 01:09:02 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:09:02 INFO 140349257213760] Epoch[25] Batch[0] avg_epoch_loss=11.159770[0m
-    [31m[10/13/2019 01:09:02 INFO 140349257213760] #quality_metric: host=algo-1, epoch=25, batch=0 train loss <loss>=11.1597700119[0m
-    [31m[10/13/2019 01:09:03 INFO 140349257213760] Epoch[25] Batch[5] avg_epoch_loss=11.006665[0m
-    [31m[10/13/2019 01:09:03 INFO 140349257213760] #quality_metric: host=algo-1, epoch=25, batch=5 train loss <loss>=11.0066653887[0m
-    [31m[10/13/2019 01:09:03 INFO 140349257213760] Epoch[25] Batch [5]#011Speed: 1435.21 samples/sec#011loss=11.006665[0m
-    [31m[10/13/2019 01:09:03 INFO 140349257213760] Epoch[25] Batch[10] avg_epoch_loss=10.961951[0m
-    [31m[10/13/2019 01:09:03 INFO 140349257213760] #quality_metric: host=algo-1, epoch=25, batch=10 train loss <loss>=10.9082939148[0m
-    [31m[10/13/2019 01:09:03 INFO 140349257213760] Epoch[25] Batch [10]#011Speed: 1246.66 samples/sec#011loss=10.908294[0m
-    [31m[10/13/2019 01:09:03 INFO 140349257213760] processed a total of 336 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 326.5659809112549, "sum": 326.5659809112549, "min": 326.5659809112549}}, "EndTime": 1570928943.236456, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928942.909446}
-    [0m
-    [31m[10/13/2019 01:09:03 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1028.54838743 records/second[0m
-    [31m[10/13/2019 01:09:03 INFO 140349257213760] #progress_metric: host=algo-1, completed 26 % of epochs[0m
-    [31m[10/13/2019 01:09:03 INFO 140349257213760] #quality_metric: host=algo-1, epoch=25, train loss <loss>=10.9619510824[0m
-    [31m[10/13/2019 01:09:03 INFO 140349257213760] best epoch loss so far[0m
-    [31m[10/13/2019 01:09:03 INFO 140349257213760] Saved checkpoint to "/opt/ml/model/state_808bfe20-9f56-445a-9ddb-57d27590a49e-0000.params"[0m
-    [31m#metrics {"Metrics": {"state.serialize.time": {"count": 1, "max": 17.882823944091797, "sum": 17.882823944091797, "min": 17.882823944091797}}, "EndTime": 1570928943.254873, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928943.23653}
-    [0m
-    [31m[10/13/2019 01:09:03 INFO 140349257213760] Epoch[26] Batch[0] avg_epoch_loss=10.843251[0m
-    [31m[10/13/2019 01:09:03 INFO 140349257213760] #quality_metric: host=algo-1, epoch=26, batch=0 train loss <loss>=10.8432512283[0m
-    [31m[10/13/2019 01:09:03 INFO 140349257213760] Epoch[26] Batch[5] avg_epoch_loss=11.067721[0m
-    [31m[10/13/2019 01:09:03 INFO 140349257213760] #quality_metric: host=algo-1, epoch=26, batch=5 train loss <loss>=11.0677207311[0m
-    [31m[10/13/2019 01:09:03 INFO 140349257213760] Epoch[26] Batch [5]#011Speed: 1374.36 samples/sec#011loss=11.067721[0m
-    [31m[10/13/2019 01:09:03 INFO 140349257213760] processed a total of 313 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 287.1098518371582, "sum": 287.1098518371582, "min": 287.1098518371582}}, "EndTime": 1570928943.542094, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928943.254932}
-    [0m
-    [31m[10/13/2019 01:09:03 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1089.7533577 records/second[0m
-    [31m[10/13/2019 01:09:03 INFO 140349257213760] #progress_metric: host=algo-1, completed 27 % of epochs[0m
-    [31m[10/13/2019 01:09:03 INFO 140349257213760] #quality_metric: host=algo-1, epoch=26, train loss <loss>=11.0114057541[0m
-    [31m[10/13/2019 01:09:03 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:09:03 INFO 140349257213760] Epoch[27] Batch[0] avg_epoch_loss=10.994570[0m
-    [31m[10/13/2019 01:09:03 INFO 140349257213760] #quality_metric: host=algo-1, epoch=27, batch=0 train loss <loss>=10.9945697784[0m
-    [31m[10/13/2019 01:09:03 INFO 140349257213760] Epoch[27] Batch[5] avg_epoch_loss=10.949540[0m
-    [31m[10/13/2019 01:09:03 INFO 140349257213760] #quality_metric: host=algo-1, epoch=27, batch=5 train loss <loss>=10.9495395025[0m
-    [31m[10/13/2019 01:09:03 INFO 140349257213760] Epoch[27] Batch [5]#011Speed: 1350.91 samples/sec#011loss=10.949540[0m
-    [31m[10/13/2019 01:09:03 INFO 140349257213760] processed a total of 303 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 285.3240966796875, "sum": 285.3240966796875, "min": 285.3240966796875}}, "EndTime": 1570928943.827938, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928943.542171}
-    [0m
-    [31m[10/13/2019 01:09:03 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1061.51917689 records/second[0m
-    [31m[10/13/2019 01:09:03 INFO 140349257213760] #progress_metric: host=algo-1, completed 28 % of epochs[0m
-    [31m[10/13/2019 01:09:03 INFO 140349257213760] #quality_metric: host=algo-1, epoch=27, train loss <loss>=11.0780882835[0m
-    [31m[10/13/2019 01:09:03 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:09:03 INFO 140349257213760] Epoch[28] Batch[0] avg_epoch_loss=11.168710[0m
-    [31m[10/13/2019 01:09:03 INFO 140349257213760] #quality_metric: host=algo-1, epoch=28, batch=0 train loss <loss>=11.1687097549[0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] Epoch[28] Batch[5] avg_epoch_loss=11.011185[0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] #quality_metric: host=algo-1, epoch=28, batch=5 train loss <loss>=11.0111850103[0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] Epoch[28] Batch [5]#011Speed: 1434.89 samples/sec#011loss=11.011185[0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] Epoch[28] Batch[10] avg_epoch_loss=11.071331[0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] #quality_metric: host=algo-1, epoch=28, batch=10 train loss <loss>=11.1435050964[0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] Epoch[28] Batch [10]#011Speed: 1428.58 samples/sec#011loss=11.143505[0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] processed a total of 359 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 339.5969867706299, "sum": 339.5969867706299, "min": 339.5969867706299}}, "EndTime": 1570928944.168056, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928943.828017}
-    [0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1056.78076936 records/second[0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] #progress_metric: host=algo-1, completed 29 % of epochs[0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] #quality_metric: host=algo-1, epoch=28, train loss <loss>=10.9448154767[0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] best epoch loss so far[0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] Saved checkpoint to "/opt/ml/model/state_1e62c651-7730-4dd3-9054-b1162c11a50d-0000.params"[0m
-    [31m#metrics {"Metrics": {"state.serialize.time": {"count": 1, "max": 17.44389533996582, "sum": 17.44389533996582, "min": 17.44389533996582}}, "EndTime": 1570928944.186045, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928944.168134}
-    [0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] Epoch[29] Batch[0] avg_epoch_loss=10.892881[0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] #quality_metric: host=algo-1, epoch=29, batch=0 train loss <loss>=10.8928813934[0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] Epoch[29] Batch[5] avg_epoch_loss=11.182096[0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] #quality_metric: host=algo-1, epoch=29, batch=5 train loss <loss>=11.1820960045[0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] Epoch[29] Batch [5]#011Speed: 1365.25 samples/sec#011loss=11.182096[0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] Epoch[29] Batch[10] avg_epoch_loss=11.165717[0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] #quality_metric: host=algo-1, epoch=29, batch=10 train loss <loss>=11.1460624695[0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] Epoch[29] Batch [10]#011Speed: 1279.85 samples/sec#011loss=11.146062[0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] processed a total of 340 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 313.66896629333496, "sum": 313.66896629333496, "min": 313.66896629333496}}, "EndTime": 1570928944.499823, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928944.186104}
-    [0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1083.57548827 records/second[0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] #progress_metric: host=algo-1, completed 30 % of epochs[0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] #quality_metric: host=algo-1, epoch=29, train loss <loss>=11.1657171249[0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] Epoch[30] Batch[0] avg_epoch_loss=11.629184[0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] #quality_metric: host=algo-1, epoch=30, batch=0 train loss <loss>=11.6291837692[0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] Epoch[30] Batch[5] avg_epoch_loss=11.209291[0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] #quality_metric: host=algo-1, epoch=30, batch=5 train loss <loss>=11.2092909813[0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] Epoch[30] Batch [5]#011Speed: 1410.50 samples/sec#011loss=11.209291[0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] Epoch[30] Batch[10] avg_epoch_loss=11.186343[0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] #quality_metric: host=algo-1, epoch=30, batch=10 train loss <loss>=11.158804512[0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] Epoch[30] Batch [10]#011Speed: 1366.22 samples/sec#011loss=11.158805[0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] processed a total of 330 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 317.4259662628174, "sum": 317.4259662628174, "min": 317.4259662628174}}, "EndTime": 1570928944.817714, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928944.499898}
-    [0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1039.25264408 records/second[0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] #progress_metric: host=algo-1, completed 31 % of epochs[0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] #quality_metric: host=algo-1, epoch=30, train loss <loss>=11.1863425862[0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] Epoch[31] Batch[0] avg_epoch_loss=11.382860[0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] #quality_metric: host=algo-1, epoch=31, batch=0 train loss <loss>=11.3828601837[0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] Epoch[31] Batch[5] avg_epoch_loss=11.087134[0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] #quality_metric: host=algo-1, epoch=31, batch=5 train loss <loss>=11.0871337255[0m
-    [31m[10/13/2019 01:09:04 INFO 140349257213760] Epoch[31] Batch [5]#011Speed: 1468.68 samples/sec#011loss=11.087134[0m
-    [31m[10/13/2019 01:09:05 INFO 140349257213760] Epoch[31] Batch[10] avg_epoch_loss=11.193346[0m
-    [31m[10/13/2019 01:09:05 INFO 140349257213760] #quality_metric: host=algo-1, epoch=31, batch=10 train loss <loss>=11.3208007812[0m
-    [31m[10/13/2019 01:09:05 INFO 140349257213760] Epoch[31] Batch [10]#011Speed: 1318.45 samples/sec#011loss=11.320801[0m
-    [31m[10/13/2019 01:09:05 INFO 140349257213760] processed a total of 326 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 297.98388481140137, "sum": 297.98388481140137, "min": 297.98388481140137}}, "EndTime": 1570928945.116234, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928944.817786}
-    [0m
-    [31m[10/13/2019 01:09:05 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1093.60326959 records/second[0m
-    [31m[10/13/2019 01:09:05 INFO 140349257213760] #progress_metric: host=algo-1, completed 32 % of epochs[0m
-    [31m[10/13/2019 01:09:05 INFO 140349257213760] #quality_metric: host=algo-1, epoch=31, train loss <loss>=11.1933460236[0m
-    [31m[10/13/2019 01:09:05 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:09:05 INFO 140349257213760] Epoch[32] Batch[0] avg_epoch_loss=10.545432[0m
-    [31m[10/13/2019 01:09:05 INFO 140349257213760] #quality_metric: host=algo-1, epoch=32, batch=0 train loss <loss>=10.5454320908[0m
-    [31m[10/13/2019 01:09:05 INFO 140349257213760] Epoch[32] Batch[5] avg_epoch_loss=11.017215[0m
-    [31m[10/13/2019 01:09:05 INFO 140349257213760] #quality_metric: host=algo-1, epoch=32, batch=5 train loss <loss>=11.0172152519[0m
-    [31m[10/13/2019 01:09:05 INFO 140349257213760] Epoch[32] Batch [5]#011Speed: 1419.13 samples/sec#011loss=11.017215[0m
-    [31m[10/13/2019 01:09:05 INFO 140349257213760] processed a total of 319 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 312.37006187438965, "sum": 312.37006187438965, "min": 312.37006187438965}}, "EndTime": 1570928945.429124, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928945.116311}
-    [0m
-    [31m[10/13/2019 01:09:05 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1020.92072961 records/second[0m
-    [31m[10/13/2019 01:09:05 INFO 140349257213760] #progress_metric: host=algo-1, completed 33 % of epochs[0m
-    [31m[10/13/2019 01:09:05 INFO 140349257213760] #quality_metric: host=algo-1, epoch=32, train loss <loss>=11.0941428185[0m
-    [31m[10/13/2019 01:09:05 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:09:05 INFO 140349257213760] Epoch[33] Batch[0] avg_epoch_loss=10.729587[0m
-    [31m[10/13/2019 01:09:05 INFO 140349257213760] #quality_metric: host=algo-1, epoch=33, batch=0 train loss <loss>=10.7295866013[0m
-    [31m[10/13/2019 01:09:05 INFO 140349257213760] Epoch[33] Batch[5] avg_epoch_loss=10.972581[0m
-    [31m[10/13/2019 01:09:05 INFO 140349257213760] #quality_metric: host=algo-1, epoch=33, batch=5 train loss <loss>=10.9725809097[0m
-    [31m[10/13/2019 01:09:05 INFO 140349257213760] Epoch[33] Batch [5]#011Speed: 1423.05 samples/sec#011loss=10.972581[0m
-    [31m[10/13/2019 01:09:05 INFO 140349257213760] Epoch[33] Batch[10] avg_epoch_loss=11.071114[0m
-    [31m[10/13/2019 01:09:05 INFO 140349257213760] #quality_metric: host=algo-1, epoch=33, batch=10 train loss <loss>=11.1893541336[0m
-    [31m[10/13/2019 01:09:05 INFO 140349257213760] Epoch[33] Batch [10]#011Speed: 1405.69 samples/sec#011loss=11.189354[0m
-    [31m[10/13/2019 01:09:05 INFO 140349257213760] processed a total of 334 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 300.3990650177002, "sum": 300.3990650177002, "min": 300.3990650177002}}, "EndTime": 1570928945.730069, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928945.429184}
-    [0m
-    [31m[10/13/2019 01:09:05 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1111.44766611 records/second[0m
-    [31m[10/13/2019 01:09:05 INFO 140349257213760] #progress_metric: host=algo-1, completed 34 % of epochs[0m
-    [31m[10/13/2019 01:09:05 INFO 140349257213760] #quality_metric: host=algo-1, epoch=33, train loss <loss>=11.0711141933[0m
-    [31m[10/13/2019 01:09:05 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:09:05 INFO 140349257213760] Epoch[34] Batch[0] avg_epoch_loss=10.922297[0m
-    [31m[10/13/2019 01:09:05 INFO 140349257213760] #quality_metric: host=algo-1, epoch=34, batch=0 train loss <loss>=10.922296524[0m
-    [31m[10/13/2019 01:09:05 INFO 140349257213760] Epoch[34] Batch[5] avg_epoch_loss=10.938361[0m
-    [31m[10/13/2019 01:09:05 INFO 140349257213760] #quality_metric: host=algo-1, epoch=34, batch=5 train loss <loss>=10.9383606911[0m
-    [31m[10/13/2019 01:09:05 INFO 140349257213760] Epoch[34] Batch [5]#011Speed: 1420.33 samples/sec#011loss=10.938361[0m
-    [31m[10/13/2019 01:09:06 INFO 140349257213760] processed a total of 316 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 287.92715072631836, "sum": 287.92715072631836, "min": 287.92715072631836}}, "EndTime": 1570928946.018484, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928945.730144}
-    [0m
-    [31m[10/13/2019 01:09:06 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1097.05834092 records/second[0m
-    [31m[10/13/2019 01:09:06 INFO 140349257213760] #progress_metric: host=algo-1, completed 35 % of epochs[0m
-    [31m[10/13/2019 01:09:06 INFO 140349257213760] #quality_metric: host=algo-1, epoch=34, train loss <loss>=10.9407487869[0m
-    [31m[10/13/2019 01:09:06 INFO 140349257213760] best epoch loss so far[0m
-    [31m[10/13/2019 01:09:06 INFO 140349257213760] Saved checkpoint to "/opt/ml/model/state_9c690179-8a19-47ae-8afc-3f7ab7fd430d-0000.params"[0m
-    [31m#metrics {"Metrics": {"state.serialize.time": {"count": 1, "max": 18.37301254272461, "sum": 18.37301254272461, "min": 18.37301254272461}}, "EndTime": 1570928946.037409, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928946.018563}
-    [0m
-    [31m[10/13/2019 01:09:06 INFO 140349257213760] Epoch[35] Batch[0] avg_epoch_loss=10.926720[0m
-    [31m[10/13/2019 01:09:06 INFO 140349257213760] #quality_metric: host=algo-1, epoch=35, batch=0 train loss <loss>=10.9267196655[0m
-    [31m[10/13/2019 01:09:06 INFO 140349257213760] Epoch[35] Batch[5] avg_epoch_loss=10.843651[0m
-    [31m[10/13/2019 01:09:06 INFO 140349257213760] #quality_metric: host=algo-1, epoch=35, batch=5 train loss <loss>=10.8436514537[0m
-    [31m[10/13/2019 01:09:06 INFO 140349257213760] Epoch[35] Batch [5]#011Speed: 1328.68 samples/sec#011loss=10.843651[0m
-    [31m[10/13/2019 01:09:06 INFO 140349257213760] processed a total of 306 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 306.8568706512451, "sum": 306.8568706512451, "min": 306.8568706512451}}, "EndTime": 1570928946.344395, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928946.037482}
-    [0m
-    [31m[10/13/2019 01:09:06 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=996.908605237 records/second[0m
-    [31m[10/13/2019 01:09:06 INFO 140349257213760] #progress_metric: host=algo-1, completed 36 % of epochs[0m
-    [31m[10/13/2019 01:09:06 INFO 140349257213760] #quality_metric: host=algo-1, epoch=35, train loss <loss>=10.8562357903[0m
-    [31m[10/13/2019 01:09:06 INFO 140349257213760] best epoch loss so far[0m
-    [31m[10/13/2019 01:09:06 INFO 140349257213760] Saved checkpoint to "/opt/ml/model/state_ecd0454f-9fac-4840-aa7b-466ed6299028-0000.params"[0m
-    [31m#metrics {"Metrics": {"state.serialize.time": {"count": 1, "max": 14.529943466186523, "sum": 14.529943466186523, "min": 14.529943466186523}}, "EndTime": 1570928946.359513, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928946.344456}
-    [0m
-    [31m[10/13/2019 01:09:06 INFO 140349257213760] Epoch[36] Batch[0] avg_epoch_loss=10.851377[0m
-    [31m[10/13/2019 01:09:06 INFO 140349257213760] #quality_metric: host=algo-1, epoch=36, batch=0 train loss <loss>=10.8513765335[0m
-    [31m[10/13/2019 01:09:06 INFO 140349257213760] Epoch[36] Batch[5] avg_epoch_loss=11.070497[0m
-    [31m[10/13/2019 01:09:06 INFO 140349257213760] #quality_metric: host=algo-1, epoch=36, batch=5 train loss <loss>=11.0704967181[0m
-    [31m[10/13/2019 01:09:06 INFO 140349257213760] Epoch[36] Batch [5]#011Speed: 1427.43 samples/sec#011loss=11.070497[0m
-    [31m[10/13/2019 01:09:06 INFO 140349257213760] Epoch[36] Batch[10] avg_epoch_loss=10.873944[0m
-    [31m[10/13/2019 01:09:06 INFO 140349257213760] #quality_metric: host=algo-1, epoch=36, batch=10 train loss <loss>=10.6380815506[0m
-    [31m[10/13/2019 01:09:06 INFO 140349257213760] Epoch[36] Batch [10]#011Speed: 1253.76 samples/sec#011loss=10.638082[0m
-    [31m[10/13/2019 01:09:06 INFO 140349257213760] processed a total of 335 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 327.3441791534424, "sum": 327.3441791534424, "min": 327.3441791534424}}, "EndTime": 1570928946.687039, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928946.359583}
-    [0m
-    [31m[10/13/2019 01:09:06 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1022.99129313 records/second[0m
-    [31m[10/13/2019 01:09:06 INFO 140349257213760] #progress_metric: host=algo-1, completed 37 % of epochs[0m
-    [31m[10/13/2019 01:09:06 INFO 140349257213760] #quality_metric: host=algo-1, epoch=36, train loss <loss>=10.8739443692[0m
-    [31m[10/13/2019 01:09:06 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:09:06 INFO 140349257213760] Epoch[37] Batch[0] avg_epoch_loss=11.259024[0m
-    [31m[10/13/2019 01:09:06 INFO 140349257213760] #quality_metric: host=algo-1, epoch=37, batch=0 train loss <loss>=11.2590236664[0m
-    [31m[10/13/2019 01:09:06 INFO 140349257213760] Epoch[37] Batch[5] avg_epoch_loss=10.918919[0m
-    [31m[10/13/2019 01:09:06 INFO 140349257213760] #quality_metric: host=algo-1, epoch=37, batch=5 train loss <loss>=10.9189194043[0m
-    [31m[10/13/2019 01:09:06 INFO 140349257213760] Epoch[37] Batch [5]#011Speed: 1429.23 samples/sec#011loss=10.918919[0m
-    [31m[10/13/2019 01:09:06 INFO 140349257213760] processed a total of 308 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 275.7718563079834, "sum": 275.7718563079834, "min": 275.7718563079834}}, "EndTime": 1570928946.963394, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928946.687115}
-    [0m
-    [31m[10/13/2019 01:09:06 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1116.39133674 records/second[0m
-    [31m[10/13/2019 01:09:06 INFO 140349257213760] #progress_metric: host=algo-1, completed 38 % of epochs[0m
-    [31m[10/13/2019 01:09:06 INFO 140349257213760] #quality_metric: host=algo-1, epoch=37, train loss <loss>=10.9996177673[0m
-    [31m[10/13/2019 01:09:06 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:09:07 INFO 140349257213760] Epoch[38] Batch[0] avg_epoch_loss=11.354058[0m
-    [31m[10/13/2019 01:09:07 INFO 140349257213760] #quality_metric: host=algo-1, epoch=38, batch=0 train loss <loss>=11.3540582657[0m
-    [31m[10/13/2019 01:09:07 INFO 140349257213760] Epoch[38] Batch[5] avg_epoch_loss=10.993329[0m
-    [31m[10/13/2019 01:09:07 INFO 140349257213760] #quality_metric: host=algo-1, epoch=38, batch=5 train loss <loss>=10.9933287303[0m
-    [31m[10/13/2019 01:09:07 INFO 140349257213760] Epoch[38] Batch [5]#011Speed: 1216.17 samples/sec#011loss=10.993329[0m
-    [31m[10/13/2019 01:09:07 INFO 140349257213760] processed a total of 298 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 301.7280101776123, "sum": 301.7280101776123, "min": 301.7280101776123}}, "EndTime": 1570928947.26567, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928946.963474}
-    [0m
-    [31m[10/13/2019 01:09:07 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=987.268451313 records/second[0m
-    [31m[10/13/2019 01:09:07 INFO 140349257213760] #progress_metric: host=algo-1, completed 39 % of epochs[0m
-    [31m[10/13/2019 01:09:07 INFO 140349257213760] #quality_metric: host=algo-1, epoch=38, train loss <loss>=10.9301908493[0m
-    [31m[10/13/2019 01:09:07 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:09:07 INFO 140349257213760] Epoch[39] Batch[0] avg_epoch_loss=10.910923[0m
-    [31m[10/13/2019 01:09:07 INFO 140349257213760] #quality_metric: host=algo-1, epoch=39, batch=0 train loss <loss>=10.9109230042[0m
-    [31m[10/13/2019 01:09:07 INFO 140349257213760] Epoch[39] Batch[5] avg_epoch_loss=10.829204[0m
-    [31m[10/13/2019 01:09:07 INFO 140349257213760] #quality_metric: host=algo-1, epoch=39, batch=5 train loss <loss>=10.8292037646[0m
-    [31m[10/13/2019 01:09:07 INFO 140349257213760] Epoch[39] Batch [5]#011Speed: 1107.43 samples/sec#011loss=10.829204[0m
-    [31m[10/13/2019 01:09:07 INFO 140349257213760] processed a total of 310 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 317.1250820159912, "sum": 317.1250820159912, "min": 317.1250820159912}}, "EndTime": 1570928947.58332, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928947.265749}
-    [0m
-    [31m[10/13/2019 01:09:07 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=977.193584753 records/second[0m
-    [31m[10/13/2019 01:09:07 INFO 140349257213760] #progress_metric: host=algo-1, completed 40 % of epochs[0m
-    [31m[10/13/2019 01:09:07 INFO 140349257213760] #quality_metric: host=algo-1, epoch=39, train loss <loss>=10.8089250565[0m
-    [31m[10/13/2019 01:09:07 INFO 140349257213760] best epoch loss so far[0m
-    [31m[10/13/2019 01:09:07 INFO 140349257213760] Saved checkpoint to "/opt/ml/model/state_31aad648-f10c-401e-b49a-052b6d80a214-0000.params"[0m
-    [31m#metrics {"Metrics": {"state.serialize.time": {"count": 1, "max": 14.456033706665039, "sum": 14.456033706665039, "min": 14.456033706665039}}, "EndTime": 1570928947.59844, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928947.583389}
-    [0m
-    [31m[10/13/2019 01:09:07 INFO 140349257213760] Epoch[40] Batch[0] avg_epoch_loss=10.940785[0m
-    [31m[10/13/2019 01:09:07 INFO 140349257213760] #quality_metric: host=algo-1, epoch=40, batch=0 train loss <loss>=10.940785408[0m
-    [31m[10/13/2019 01:09:07 INFO 140349257213760] Epoch[40] Batch[5] avg_epoch_loss=10.933607[0m
-    [31m[10/13/2019 01:09:07 INFO 140349257213760] #quality_metric: host=algo-1, epoch=40, batch=5 train loss <loss>=10.9336072604[0m
-    [31m[10/13/2019 01:09:07 INFO 140349257213760] Epoch[40] Batch [5]#011Speed: 1390.46 samples/sec#011loss=10.933607[0m
-    [31m[10/13/2019 01:09:07 INFO 140349257213760] processed a total of 299 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 283.0171585083008, "sum": 283.0171585083008, "min": 283.0171585083008}}, "EndTime": 1570928947.881594, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928947.59852}
-    [0m
-    [31m[10/13/2019 01:09:07 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1056.06292099 records/second[0m
-    [31m[10/13/2019 01:09:07 INFO 140349257213760] #progress_metric: host=algo-1, completed 41 % of epochs[0m
-    [31m[10/13/2019 01:09:07 INFO 140349257213760] #quality_metric: host=algo-1, epoch=40, train loss <loss>=10.7611354828[0m
-    [31m[10/13/2019 01:09:07 INFO 140349257213760] best epoch loss so far[0m
-    [31m[10/13/2019 01:09:07 INFO 140349257213760] Saved checkpoint to "/opt/ml/model/state_1e7fc39f-019c-4971-8bb7-31a8cc1f50a1-0000.params"[0m
-    [31m#metrics {"Metrics": {"state.serialize.time": {"count": 1, "max": 17.193078994750977, "sum": 17.193078994750977, "min": 17.193078994750977}}, "EndTime": 1570928947.899344, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928947.881669}
-    [0m
-    [31m[10/13/2019 01:09:07 INFO 140349257213760] Epoch[41] Batch[0] avg_epoch_loss=10.665432[0m
-    [31m[10/13/2019 01:09:07 INFO 140349257213760] #quality_metric: host=algo-1, epoch=41, batch=0 train loss <loss>=10.6654319763[0m
-    [31m[10/13/2019 01:09:08 INFO 140349257213760] Epoch[41] Batch[5] avg_epoch_loss=10.783400[0m
-    [31m[10/13/2019 01:09:08 INFO 140349257213760] #quality_metric: host=algo-1, epoch=41, batch=5 train loss <loss>=10.7833997409[0m
-    [31m[10/13/2019 01:09:08 INFO 140349257213760] Epoch[41] Batch [5]#011Speed: 1445.18 samples/sec#011loss=10.783400[0m
-    [31m[10/13/2019 01:09:08 INFO 140349257213760] processed a total of 319 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 268.0490016937256, "sum": 268.0490016937256, "min": 268.0490016937256}}, "EndTime": 1570928948.167515, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928947.899415}
-    [0m
-    [31m[10/13/2019 01:09:08 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1189.60582114 records/second[0m
-    [31m[10/13/2019 01:09:08 INFO 140349257213760] #progress_metric: host=algo-1, completed 42 % of epochs[0m
-    [31m[10/13/2019 01:09:08 INFO 140349257213760] #quality_metric: host=algo-1, epoch=41, train loss <loss>=10.80688591[0m
-    [31m[10/13/2019 01:09:08 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:09:08 INFO 140349257213760] Epoch[42] Batch[0] avg_epoch_loss=10.723367[0m
-    [31m[10/13/2019 01:09:08 INFO 140349257213760] #quality_metric: host=algo-1, epoch=42, batch=0 train loss <loss>=10.7233667374[0m
-    [31m[10/13/2019 01:09:08 INFO 140349257213760] Epoch[42] Batch[5] avg_epoch_loss=10.690420[0m
-    [31m[10/13/2019 01:09:08 INFO 140349257213760] #quality_metric: host=algo-1, epoch=42, batch=5 train loss <loss>=10.6904203097[0m
-    [31m[10/13/2019 01:09:08 INFO 140349257213760] Epoch[42] Batch [5]#011Speed: 1462.88 samples/sec#011loss=10.690420[0m
-    [31m[10/13/2019 01:09:08 INFO 140349257213760] processed a total of 309 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 282.8481197357178, "sum": 282.8481197357178, "min": 282.8481197357178}}, "EndTime": 1570928948.450878, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928948.167589}
-    [0m
-    [31m[10/13/2019 01:09:08 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1092.03474181 records/second[0m
-    [31m[10/13/2019 01:09:08 INFO 140349257213760] #progress_metric: host=algo-1, completed 43 % of epochs[0m
-    [31m[10/13/2019 01:09:08 INFO 140349257213760] #quality_metric: host=algo-1, epoch=42, train loss <loss>=10.7913176537[0m
-    [31m[10/13/2019 01:09:08 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:09:08 INFO 140349257213760] Epoch[43] Batch[0] avg_epoch_loss=10.537905[0m
-    [31m[10/13/2019 01:09:08 INFO 140349257213760] #quality_metric: host=algo-1, epoch=43, batch=0 train loss <loss>=10.5379047394[0m
-    [31m[10/13/2019 01:09:08 INFO 140349257213760] Epoch[43] Batch[5] avg_epoch_loss=10.934674[0m
-    [31m[10/13/2019 01:09:08 INFO 140349257213760] #quality_metric: host=algo-1, epoch=43, batch=5 train loss <loss>=10.9346741041[0m
-    [31m[10/13/2019 01:09:08 INFO 140349257213760] Epoch[43] Batch [5]#011Speed: 1239.93 samples/sec#011loss=10.934674[0m
-    [31m[10/13/2019 01:09:08 INFO 140349257213760] Epoch[43] Batch[10] avg_epoch_loss=11.092488[0m
-    [31m[10/13/2019 01:09:08 INFO 140349257213760] #quality_metric: host=algo-1, epoch=43, batch=10 train loss <loss>=11.2818655014[0m
-    [31m[10/13/2019 01:09:08 INFO 140349257213760] Epoch[43] Batch [10]#011Speed: 1318.98 samples/sec#011loss=11.281866[0m
-    [31m[10/13/2019 01:09:08 INFO 140349257213760] processed a total of 321 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 331.67505264282227, "sum": 331.67505264282227, "min": 331.67505264282227}}, "EndTime": 1570928948.783085, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928948.450953}
-    [0m
-    [31m[10/13/2019 01:09:08 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=967.496896744 records/second[0m
-    [31m[10/13/2019 01:09:08 INFO 140349257213760] #progress_metric: host=algo-1, completed 44 % of epochs[0m
-    [31m[10/13/2019 01:09:08 INFO 140349257213760] #quality_metric: host=algo-1, epoch=43, train loss <loss>=11.0924883756[0m
-    [31m[10/13/2019 01:09:08 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:09:08 INFO 140349257213760] Epoch[44] Batch[0] avg_epoch_loss=11.504734[0m
-    [31m[10/13/2019 01:09:08 INFO 140349257213760] #quality_metric: host=algo-1, epoch=44, batch=0 train loss <loss>=11.5047340393[0m
-    [31m[10/13/2019 01:09:08 INFO 140349257213760] Epoch[44] Batch[5] avg_epoch_loss=11.091312[0m
-    [31m[10/13/2019 01:09:08 INFO 140349257213760] #quality_metric: host=algo-1, epoch=44, batch=5 train loss <loss>=11.0913116137[0m
-    [31m[10/13/2019 01:09:08 INFO 140349257213760] Epoch[44] Batch [5]#011Speed: 1353.10 samples/sec#011loss=11.091312[0m
-    [31m[10/13/2019 01:09:09 INFO 140349257213760] processed a total of 310 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 285.58802604675293, "sum": 285.58802604675293, "min": 285.58802604675293}}, "EndTime": 1570928949.069195, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928948.78316}
-    [0m
-    [31m[10/13/2019 01:09:09 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1085.06570976 records/second[0m
-    [31m[10/13/2019 01:09:09 INFO 140349257213760] #progress_metric: host=algo-1, completed 45 % of epochs[0m
-    [31m[10/13/2019 01:09:09 INFO 140349257213760] #quality_metric: host=algo-1, epoch=44, train loss <loss>=11.0093707085[0m
-    [31m[10/13/2019 01:09:09 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:09:09 INFO 140349257213760] Epoch[45] Batch[0] avg_epoch_loss=11.139114[0m
-    [31m[10/13/2019 01:09:09 INFO 140349257213760] #quality_metric: host=algo-1, epoch=45, batch=0 train loss <loss>=11.1391143799[0m
-    [31m[10/13/2019 01:09:09 INFO 140349257213760] Epoch[45] Batch[5] avg_epoch_loss=10.980844[0m
-    [31m[10/13/2019 01:09:09 INFO 140349257213760] #quality_metric: host=algo-1, epoch=45, batch=5 train loss <loss>=10.9808440208[0m
-    [31m[10/13/2019 01:09:09 INFO 140349257213760] Epoch[45] Batch [5]#011Speed: 1329.83 samples/sec#011loss=10.980844[0m
-    [31m[10/13/2019 01:09:09 INFO 140349257213760] Epoch[45] Batch[10] avg_epoch_loss=10.904563[0m
-    [31m[10/13/2019 01:09:09 INFO 140349257213760] #quality_metric: host=algo-1, epoch=45, batch=10 train loss <loss>=10.8130249023[0m
-    [31m[10/13/2019 01:09:09 INFO 140349257213760] Epoch[45] Batch [10]#011Speed: 1223.20 samples/sec#011loss=10.813025[0m
-    [31m[10/13/2019 01:09:09 INFO 140349257213760] processed a total of 345 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 346.73309326171875, "sum": 346.73309326171875, "min": 346.73309326171875}}, "EndTime": 1570928949.416416, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928949.069271}
-    [0m
-    [31m[10/13/2019 01:09:09 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=994.691814509 records/second[0m
-    [31m[10/13/2019 01:09:09 INFO 140349257213760] #progress_metric: host=algo-1, completed 46 % of epochs[0m
-    [31m[10/13/2019 01:09:09 INFO 140349257213760] #quality_metric: host=algo-1, epoch=45, train loss <loss>=10.9045626033[0m
-    [31m[10/13/2019 01:09:09 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:09:09 INFO 140349257213760] Epoch[46] Batch[0] avg_epoch_loss=11.331752[0m
-    [31m[10/13/2019 01:09:09 INFO 140349257213760] #quality_metric: host=algo-1, epoch=46, batch=0 train loss <loss>=11.3317518234[0m
-    [31m[10/13/2019 01:09:09 INFO 140349257213760] Epoch[46] Batch[5] avg_epoch_loss=10.935498[0m
-    [31m[10/13/2019 01:09:09 INFO 140349257213760] #quality_metric: host=algo-1, epoch=46, batch=5 train loss <loss>=10.9354979197[0m
-    [31m[10/13/2019 01:09:09 INFO 140349257213760] Epoch[46] Batch [5]#011Speed: 1471.85 samples/sec#011loss=10.935498[0m
-    [31m[10/13/2019 01:09:09 INFO 140349257213760] processed a total of 304 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 276.34406089782715, "sum": 276.34406089782715, "min": 276.34406089782715}}, "EndTime": 1570928949.693247, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928949.416491}
-    [0m
-    [31m[10/13/2019 01:09:09 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1099.63202336 records/second[0m
-    [31m[10/13/2019 01:09:09 INFO 140349257213760] #progress_metric: host=algo-1, completed 47 % of epochs[0m
-    [31m[10/13/2019 01:09:09 INFO 140349257213760] #quality_metric: host=algo-1, epoch=46, train loss <loss>=10.8793656349[0m
-    [31m[10/13/2019 01:09:09 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:09:09 INFO 140349257213760] Epoch[47] Batch[0] avg_epoch_loss=10.465590[0m
-    [31m[10/13/2019 01:09:09 INFO 140349257213760] #quality_metric: host=algo-1, epoch=47, batch=0 train loss <loss>=10.4655895233[0m
-    [31m[10/13/2019 01:09:09 INFO 140349257213760] Epoch[47] Batch[5] avg_epoch_loss=10.848136[0m
-    [31m[10/13/2019 01:09:09 INFO 140349257213760] #quality_metric: host=algo-1, epoch=47, batch=5 train loss <loss>=10.8481362661[0m
-    [31m[10/13/2019 01:09:09 INFO 140349257213760] Epoch[47] Batch [5]#011Speed: 1386.41 samples/sec#011loss=10.848136[0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] Epoch[47] Batch[10] avg_epoch_loss=10.948476[0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] #quality_metric: host=algo-1, epoch=47, batch=10 train loss <loss>=11.0688837051[0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] Epoch[47] Batch [10]#011Speed: 1404.27 samples/sec#011loss=11.068884[0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] processed a total of 344 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 309.1440200805664, "sum": 309.1440200805664, "min": 309.1440200805664}}, "EndTime": 1570928950.002897, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928949.693323}
-    [0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1112.36564253 records/second[0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] #progress_metric: host=algo-1, completed 48 % of epochs[0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] #quality_metric: host=algo-1, epoch=47, train loss <loss>=10.9484760111[0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] Epoch[48] Batch[0] avg_epoch_loss=10.729902[0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] #quality_metric: host=algo-1, epoch=48, batch=0 train loss <loss>=10.7299022675[0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] Epoch[48] Batch[5] avg_epoch_loss=10.899997[0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] #quality_metric: host=algo-1, epoch=48, batch=5 train loss <loss>=10.8999965986[0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] Epoch[48] Batch [5]#011Speed: 1448.19 samples/sec#011loss=10.899997[0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] processed a total of 301 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 273.1289863586426, "sum": 273.1289863586426, "min": 273.1289863586426}}, "EndTime": 1570928950.276538, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928950.002971}
-    [0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1101.59626753 records/second[0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] #progress_metric: host=algo-1, completed 49 % of epochs[0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] #quality_metric: host=algo-1, epoch=48, train loss <loss>=10.8594436646[0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] Epoch[49] Batch[0] avg_epoch_loss=11.043782[0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] #quality_metric: host=algo-1, epoch=49, batch=0 train loss <loss>=11.0437822342[0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] Epoch[49] Batch[5] avg_epoch_loss=11.098047[0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] #quality_metric: host=algo-1, epoch=49, batch=5 train loss <loss>=11.0980469386[0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] Epoch[49] Batch [5]#011Speed: 1384.30 samples/sec#011loss=11.098047[0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] Epoch[49] Batch[10] avg_epoch_loss=11.075164[0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] #quality_metric: host=algo-1, epoch=49, batch=10 train loss <loss>=11.0477035522[0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] Epoch[49] Batch [10]#011Speed: 1441.36 samples/sec#011loss=11.047704[0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] processed a total of 361 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 342.44799613952637, "sum": 342.44799613952637, "min": 342.44799613952637}}, "EndTime": 1570928950.619504, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928950.276614}
-    [0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1053.83349063 records/second[0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] #progress_metric: host=algo-1, completed 50 % of epochs[0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] #quality_metric: host=algo-1, epoch=49, train loss <loss>=11.0803627968[0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] Epoch[50] Batch[0] avg_epoch_loss=10.215588[0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] #quality_metric: host=algo-1, epoch=50, batch=0 train loss <loss>=10.215587616[0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] Epoch[50] Batch[5] avg_epoch_loss=10.655030[0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] #quality_metric: host=algo-1, epoch=50, batch=5 train loss <loss>=10.6550299327[0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] Epoch[50] Batch [5]#011Speed: 1327.54 samples/sec#011loss=10.655030[0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] processed a total of 298 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 300.10485649108887, "sum": 300.10485649108887, "min": 300.10485649108887}}, "EndTime": 1570928950.920126, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928950.619581}
-    [0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=992.621934842 records/second[0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] #progress_metric: host=algo-1, completed 51 % of epochs[0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] #quality_metric: host=algo-1, epoch=50, train loss <loss>=10.7369652748[0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] best epoch loss so far[0m
-    [31m[10/13/2019 01:09:10 INFO 140349257213760] Saved checkpoint to "/opt/ml/model/state_5762026e-84fb-4000-8f27-b8232a927a7a-0000.params"[0m
-    [31m#metrics {"Metrics": {"state.serialize.time": {"count": 1, "max": 17.453908920288086, "sum": 17.453908920288086, "min": 17.453908920288086}}, "EndTime": 1570928950.938132, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928950.9202}
-    [0m
-    [31m[10/13/2019 01:09:11 INFO 140349257213760] Epoch[51] Batch[0] avg_epoch_loss=11.167840[0m
-    [31m[10/13/2019 01:09:11 INFO 140349257213760] #quality_metric: host=algo-1, epoch=51, batch=0 train loss <loss>=11.167840004[0m
-    [31m[10/13/2019 01:09:11 INFO 140349257213760] Epoch[51] Batch[5] avg_epoch_loss=10.907246[0m
-    [31m[10/13/2019 01:09:11 INFO 140349257213760] #quality_metric: host=algo-1, epoch=51, batch=5 train loss <loss>=10.907245636[0m
-    [31m[10/13/2019 01:09:11 INFO 140349257213760] Epoch[51] Batch [5]#011Speed: 1144.70 samples/sec#011loss=10.907246[0m
-    [31m[10/13/2019 01:09:11 INFO 140349257213760] processed a total of 318 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 310.4979991912842, "sum": 310.4979991912842, "min": 310.4979991912842}}, "EndTime": 1570928951.248741, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928950.938191}
-    [0m
-    [31m[10/13/2019 01:09:11 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1023.79249489 records/second[0m
-    [31m[10/13/2019 01:09:11 INFO 140349257213760] #progress_metric: host=algo-1, completed 52 % of epochs[0m
-    [31m[10/13/2019 01:09:11 INFO 140349257213760] #quality_metric: host=algo-1, epoch=51, train loss <loss>=10.8122246742[0m
-    [31m[10/13/2019 01:09:11 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:09:11 INFO 140349257213760] Epoch[52] Batch[0] avg_epoch_loss=10.429425[0m
-    [31m[10/13/2019 01:09:11 INFO 140349257213760] #quality_metric: host=algo-1, epoch=52, batch=0 train loss <loss>=10.4294252396[0m
-    [31m[10/13/2019 01:09:11 INFO 140349257213760] Epoch[52] Batch[5] avg_epoch_loss=10.817763[0m
-    [31m[10/13/2019 01:09:11 INFO 140349257213760] #quality_metric: host=algo-1, epoch=52, batch=5 train loss <loss>=10.8177634875[0m
-    [31m[10/13/2019 01:09:11 INFO 140349257213760] Epoch[52] Batch [5]#011Speed: 1163.51 samples/sec#011loss=10.817763[0m
-    [31m[10/13/2019 01:09:11 INFO 140349257213760] Epoch[52] Batch[10] avg_epoch_loss=10.909153[0m
-    [31m[10/13/2019 01:09:11 INFO 140349257213760] #quality_metric: host=algo-1, epoch=52, batch=10 train loss <loss>=11.0188205719[0m
-    [31m[10/13/2019 01:09:11 INFO 140349257213760] Epoch[52] Batch [10]#011Speed: 1459.36 samples/sec#011loss=11.018821[0m
-    [31m[10/13/2019 01:09:11 INFO 140349257213760] processed a total of 329 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 323.4851360321045, "sum": 323.4851360321045, "min": 323.4851360321045}}, "EndTime": 1570928951.572732, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928951.248819}
-    [0m
-    [31m[10/13/2019 01:09:11 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1016.73429245 records/second[0m
-    [31m[10/13/2019 01:09:11 INFO 140349257213760] #progress_metric: host=algo-1, completed 53 % of epochs[0m
-    [31m[10/13/2019 01:09:11 INFO 140349257213760] #quality_metric: host=algo-1, epoch=52, train loss <loss>=10.9091530713[0m
-    [31m[10/13/2019 01:09:11 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:09:11 INFO 140349257213760] Epoch[53] Batch[0] avg_epoch_loss=10.816930[0m
-    [31m[10/13/2019 01:09:11 INFO 140349257213760] #quality_metric: host=algo-1, epoch=53, batch=0 train loss <loss>=10.8169298172[0m
-    [31m[10/13/2019 01:09:11 INFO 140349257213760] Epoch[53] Batch[5] avg_epoch_loss=10.837946[0m
-    [31m[10/13/2019 01:09:11 INFO 140349257213760] #quality_metric: host=algo-1, epoch=53, batch=5 train loss <loss>=10.8379457792[0m
-    [31m[10/13/2019 01:09:11 INFO 140349257213760] Epoch[53] Batch [5]#011Speed: 1250.43 samples/sec#011loss=10.837946[0m
-    [31m[10/13/2019 01:09:11 INFO 140349257213760] Epoch[53] Batch[10] avg_epoch_loss=11.311763[0m
-    [31m[10/13/2019 01:09:11 INFO 140349257213760] #quality_metric: host=algo-1, epoch=53, batch=10 train loss <loss>=11.880342865[0m
-    [31m[10/13/2019 01:09:11 INFO 140349257213760] Epoch[53] Batch [10]#011Speed: 1384.41 samples/sec#011loss=11.880343[0m
-    [31m[10/13/2019 01:09:11 INFO 140349257213760] processed a total of 329 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 316.18595123291016, "sum": 316.18595123291016, "min": 316.18595123291016}}, "EndTime": 1570928951.889382, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928951.572799}
-    [0m
-    [31m[10/13/2019 01:09:11 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1040.1779071 records/second[0m
-    [31m[10/13/2019 01:09:11 INFO 140349257213760] #progress_metric: host=algo-1, completed 54 % of epochs[0m
-    [31m[10/13/2019 01:09:11 INFO 140349257213760] #quality_metric: host=algo-1, epoch=53, train loss <loss>=11.3117626364[0m
-    [31m[10/13/2019 01:09:11 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:09:11 INFO 140349257213760] Epoch[54] Batch[0] avg_epoch_loss=10.939750[0m
-    [31m[10/13/2019 01:09:11 INFO 140349257213760] #quality_metric: host=algo-1, epoch=54, batch=0 train loss <loss>=10.9397497177[0m
-    [31m[10/13/2019 01:09:12 INFO 140349257213760] Epoch[54] Batch[5] avg_epoch_loss=11.186847[0m
-    [31m[10/13/2019 01:09:12 INFO 140349257213760] #quality_metric: host=algo-1, epoch=54, batch=5 train loss <loss>=11.186847051[0m
-    [31m[10/13/2019 01:09:12 INFO 140349257213760] Epoch[54] Batch [5]#011Speed: 1485.46 samples/sec#011loss=11.186847[0m
-    [31m[10/13/2019 01:09:12 INFO 140349257213760] Epoch[54] Batch[10] avg_epoch_loss=11.302146[0m
-    [31m[10/13/2019 01:09:12 INFO 140349257213760] #quality_metric: host=algo-1, epoch=54, batch=10 train loss <loss>=11.4405040741[0m
-    [31m[10/13/2019 01:09:12 INFO 140349257213760] Epoch[54] Batch [10]#011Speed: 1409.02 samples/sec#011loss=11.440504[0m
-    [31m[10/13/2019 01:09:12 INFO 140349257213760] processed a total of 332 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 312.3960494995117, "sum": 312.3960494995117, "min": 312.3960494995117}}, "EndTime": 1570928952.202257, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928951.889455}
-    [0m
-    [31m[10/13/2019 01:09:12 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1062.39675782 records/second[0m
-    [31m[10/13/2019 01:09:12 INFO 140349257213760] #progress_metric: host=algo-1, completed 55 % of epochs[0m
-    [31m[10/13/2019 01:09:12 INFO 140349257213760] #quality_metric: host=algo-1, epoch=54, train loss <loss>=11.3021456979[0m
-    [31m[10/13/2019 01:09:12 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:09:12 INFO 140349257213760] Epoch[55] Batch[0] avg_epoch_loss=11.223723[0m
-    [31m[10/13/2019 01:09:12 INFO 140349257213760] #quality_metric: host=algo-1, epoch=55, batch=0 train loss <loss>=11.2237234116[0m
-    [31m[10/13/2019 01:09:12 INFO 140349257213760] Epoch[55] Batch[5] avg_epoch_loss=11.179704[0m
-    [31m[10/13/2019 01:09:12 INFO 140349257213760] #quality_metric: host=algo-1, epoch=55, batch=5 train loss <loss>=11.1797040304[0m
-    [31m[10/13/2019 01:09:12 INFO 140349257213760] Epoch[55] Batch [5]#011Speed: 1489.98 samples/sec#011loss=11.179704[0m
-    [31m[10/13/2019 01:09:12 INFO 140349257213760] processed a total of 281 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 261.19518280029297, "sum": 261.19518280029297, "min": 261.19518280029297}}, "EndTime": 1570928952.463933, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928952.20233}
-    [0m
-    [31m[10/13/2019 01:09:12 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1075.41251753 records/second[0m
-    [31m[10/13/2019 01:09:12 INFO 140349257213760] #progress_metric: host=algo-1, completed 56 % of epochs[0m
-    [31m[10/13/2019 01:09:12 INFO 140349257213760] #quality_metric: host=algo-1, epoch=55, train loss <loss>=11.0983898375[0m
-    [31m[10/13/2019 01:09:12 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:09:12 INFO 140349257213760] Epoch[56] Batch[0] avg_epoch_loss=11.178563[0m
-    [31m[10/13/2019 01:09:12 INFO 140349257213760] #quality_metric: host=algo-1, epoch=56, batch=0 train loss <loss>=11.178563118[0m
-    [31m[10/13/2019 01:09:12 INFO 140349257213760] Epoch[56] Batch[5] avg_epoch_loss=11.160533[0m
-    [31m[10/13/2019 01:09:12 INFO 140349257213760] #quality_metric: host=algo-1, epoch=56, batch=5 train loss <loss>=11.1605331103[0m
-    [31m[10/13/2019 01:09:12 INFO 140349257213760] Epoch[56] Batch [5]#011Speed: 1284.17 samples/sec#011loss=11.160533[0m
-    [31m[10/13/2019 01:09:12 INFO 140349257213760] processed a total of 299 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 282.9010486602783, "sum": 282.9010486602783, "min": 282.9010486602783}}, "EndTime": 1570928952.747367, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928952.464}
-    [0m
-    [31m[10/13/2019 01:09:12 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1056.49618798 records/second[0m
-    [31m[10/13/2019 01:09:12 INFO 140349257213760] #progress_metric: host=algo-1, completed 57 % of epochs[0m
-    [31m[10/13/2019 01:09:12 INFO 140349257213760] #quality_metric: host=algo-1, epoch=56, train loss <loss>=11.1989048958[0m
-    [31m[10/13/2019 01:09:12 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:09:12 INFO 140349257213760] Epoch[57] Batch[0] avg_epoch_loss=11.278411[0m
-    [31m[10/13/2019 01:09:12 INFO 140349257213760] #quality_metric: host=algo-1, epoch=57, batch=0 train loss <loss>=11.2784109116[0m
-    [31m[10/13/2019 01:09:12 INFO 140349257213760] Epoch[57] Batch[5] avg_epoch_loss=10.919329[0m
-    [31m[10/13/2019 01:09:12 INFO 140349257213760] #quality_metric: host=algo-1, epoch=57, batch=5 train loss <loss>=10.9193293254[0m
-    [31m[10/13/2019 01:09:12 INFO 140349257213760] Epoch[57] Batch [5]#011Speed: 1499.44 samples/sec#011loss=10.919329[0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] processed a total of 299 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 275.7079601287842, "sum": 275.7079601287842, "min": 275.7079601287842}}, "EndTime": 1570928953.023585, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928952.747441}
-    [0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1084.04868334 records/second[0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] #progress_metric: host=algo-1, completed 58 % of epochs[0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] #quality_metric: host=algo-1, epoch=57, train loss <loss>=10.8147159576[0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] Epoch[58] Batch[0] avg_epoch_loss=10.905876[0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] #quality_metric: host=algo-1, epoch=58, batch=0 train loss <loss>=10.9058761597[0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] Epoch[58] Batch[5] avg_epoch_loss=11.074553[0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] #quality_metric: host=algo-1, epoch=58, batch=5 train loss <loss>=11.0745534897[0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] Epoch[58] Batch [5]#011Speed: 1393.56 samples/sec#011loss=11.074553[0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] processed a total of 316 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 281.75806999206543, "sum": 281.75806999206543, "min": 281.75806999206543}}, "EndTime": 1570928953.305846, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928953.023659}
-    [0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1121.09221816 records/second[0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] #progress_metric: host=algo-1, completed 59 % of epochs[0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] #quality_metric: host=algo-1, epoch=58, train loss <loss>=11.0196334839[0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] Epoch[59] Batch[0] avg_epoch_loss=11.090715[0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] #quality_metric: host=algo-1, epoch=59, batch=0 train loss <loss>=11.0907154083[0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] Epoch[59] Batch[5] avg_epoch_loss=10.960422[0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] #quality_metric: host=algo-1, epoch=59, batch=5 train loss <loss>=10.960422198[0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] Epoch[59] Batch [5]#011Speed: 1334.26 samples/sec#011loss=10.960422[0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] processed a total of 306 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 290.3618812561035, "sum": 290.3618812561035, "min": 290.3618812561035}}, "EndTime": 1570928953.596718, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928953.305921}
-    [0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1053.45425057 records/second[0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] #progress_metric: host=algo-1, completed 60 % of epochs[0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] #quality_metric: host=algo-1, epoch=59, train loss <loss>=10.8264735222[0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] Epoch[60] Batch[0] avg_epoch_loss=10.987319[0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] #quality_metric: host=algo-1, epoch=60, batch=0 train loss <loss>=10.9873189926[0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] Epoch[60] Batch[5] avg_epoch_loss=10.794996[0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] #quality_metric: host=algo-1, epoch=60, batch=5 train loss <loss>=10.7949959437[0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] Epoch[60] Batch [5]#011Speed: 1426.38 samples/sec#011loss=10.794996[0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] processed a total of 315 examples[0m
-    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 282.14406967163086, "sum": 282.14406967163086, "min": 282.14406967163086}}, "EndTime": 1570928953.879393, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928953.596793}
-    [0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] #throughput_metric: host=algo-1, train throughput=1115.98409654 records/second[0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] #progress_metric: host=algo-1, completed 61 % of epochs[0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] #quality_metric: host=algo-1, epoch=60, train loss <loss>=10.9250784874[0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] loss did not improve[0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] Loading parameters from best epoch (50)[0m
-    [31m#metrics {"Metrics": {"state.deserialize.time": {"count": 1, "max": 5.165815353393555, "sum": 5.165815353393555, "min": 5.165815353393555}}, "EndTime": 1570928953.885222, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928953.879471}
-    [0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] stopping training now[0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] #progress_metric: host=algo-1, completed 100 % of epochs[0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] Final loss: 10.7369652748 (occurred at epoch 50)[0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] #quality_metric: host=algo-1, train final_loss <loss>=10.7369652748[0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] Worker algo-1 finished training.[0m
-    [31m[10/13/2019 01:09:13 WARNING 140349257213760] wait_for_all_workers will not sync workers since the kv store is not running distributed[0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] All workers finished. Serializing model for prediction.[0m
-    [31m#metrics {"Metrics": {"get_graph.time": {"count": 1, "max": 76.54500007629395, "sum": 76.54500007629395, "min": 76.54500007629395}}, "EndTime": 1570928953.96251, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928953.885268}
-    [0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] Number of GPUs being used: 0[0m
-    [31m#metrics {"Metrics": {"finalize.time": {"count": 1, "max": 111.83619499206543, "sum": 111.83619499206543, "min": 111.83619499206543}}, "EndTime": 1570928953.997767, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928953.962559}
-    [0m
-    [31m[10/13/2019 01:09:13 INFO 140349257213760] Serializing to /opt/ml/model/model_algo-1[0m
-    [31m[10/13/2019 01:09:14 INFO 140349257213760] Saved checkpoint to "/opt/ml/model/model_algo-1-0000.params"[0m
-    [31m#metrics {"Metrics": {"model.serialize.time": {"count": 1, "max": 6.1779022216796875, "sum": 6.1779022216796875, "min": 6.1779022216796875}}, "EndTime": 1570928954.004036, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928953.997825}
-    [0m
-    [31m[10/13/2019 01:09:14 INFO 140349257213760] Successfully serialized the model for prediction.[0m
-    [31m[10/13/2019 01:09:14 INFO 140349257213760] Evaluating model accuracy on testset using 100 samples[0m
-    [31m#metrics {"Metrics": {"model.bind.time": {"count": 1, "max": 0.03814697265625, "sum": 0.03814697265625, "min": 0.03814697265625}}, "EndTime": 1570928954.004734, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928954.004095}
-    [0m
-    [31m#metrics {"Metrics": {"model.score.time": {"count": 1, "max": 370.29314041137695, "sum": 370.29314041137695, "min": 370.29314041137695}}, "EndTime": 1570928954.374995, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928954.004779}
-    [0m
-    [31m[10/13/2019 01:09:14 INFO 140349257213760] #test_score (algo-1, RMSE): 17760.1765757[0m
-    [31m[10/13/2019 01:09:14 INFO 140349257213760] #test_score (algo-1, mean_wQuantileLoss): 0.10519661[0m
-    [31m[10/13/2019 01:09:14 INFO 140349257213760] #test_score (algo-1, wQuantileLoss[0.1]): 0.046778638[0m
-    [31m[10/13/2019 01:09:14 INFO 140349257213760] #test_score (algo-1, wQuantileLoss[0.2]): 0.08157892[0m
-    [31m[10/13/2019 01:09:14 INFO 140349257213760] #test_score (algo-1, wQuantileLoss[0.3]): 0.10356046[0m
-    [31m[10/13/2019 01:09:14 INFO 140349257213760] #test_score (algo-1, wQuantileLoss[0.4]): 0.117397465[0m
-    [31m[10/13/2019 01:09:14 INFO 140349257213760] #test_score (algo-1, wQuantileLoss[0.5]): 0.12368922[0m
-    [31m[10/13/2019 01:09:14 INFO 140349257213760] #test_score (algo-1, wQuantileLoss[0.6]): 0.12361303[0m
-    [31m[10/13/2019 01:09:14 INFO 140349257213760] #test_score (algo-1, wQuantileLoss[0.7]): 0.1194891[0m
-    [31m[10/13/2019 01:09:14 INFO 140349257213760] #test_score (algo-1, wQuantileLoss[0.8]): 0.120740786[0m
-    [31m[10/13/2019 01:09:14 INFO 140349257213760] #test_score (algo-1, wQuantileLoss[0.9]): 0.109921835[0m
-    [31m[10/13/2019 01:09:14 INFO 140349257213760] #quality_metric: host=algo-1, test mean_wQuantileLoss <loss>=0.105196610093[0m
-    [31m[10/13/2019 01:09:14 INFO 140349257213760] #quality_metric: host=algo-1, test RMSE <loss>=17760.1765757[0m
-    [31m#metrics {"Metrics": {"totaltime": {"count": 1, "max": 19808.30192565918, "sum": 19808.30192565918, "min": 19808.30192565918}, "setuptime": {"count": 1, "max": 9.161949157714844, "sum": 9.161949157714844, "min": 9.161949157714844}}, "EndTime": 1570928954.387035, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1570928954.375078}
-    [0m
-    
-    2019-10-13 01:09:46 Uploading - Uploading generated training model
-    2019-10-13 01:09:46 Completed - Training job completed
-    Training seconds: 95
-    Billable seconds: 95
+    [31m[11/30/2019 16:29:43 INFO 140657760761664] Detected entry point for worker worker[0m
+    [31m[11/30/2019 16:29:43 INFO 140657760761664] Using early stopping with patience 10[0m
+    [31m[11/30/2019 16:29:43 INFO 140657760761664] [cardinality=auto] `cat` field was NOT found in the file `/opt/ml/input/data/train/train.json` and will NOT be used for training.[0m
+    [31m[11/30/2019 16:29:43 INFO 140657760761664] [num_dynamic_feat=auto] `dynamic_feat` field was NOT found in the file `/opt/ml/input/data/train/train.json` and will NOT be used for training.[0m
+    [31m[11/30/2019 16:29:43 INFO 140657760761664] Training set statistics:[0m
+    [31m[11/30/2019 16:29:43 INFO 140657760761664] Integer time series[0m
+    [31m[11/30/2019 16:29:43 INFO 140657760761664] number of time series: 3[0m
+    [31m[11/30/2019 16:29:43 INFO 140657760761664] number of observations: 1473[0m
+    [31m[11/30/2019 16:29:43 INFO 140657760761664] mean target length: 491[0m
+    [31m[11/30/2019 16:29:43 INFO 140657760761664] min/mean/max target: 5.0/342890.394433/1039874.0[0m
+    [31m[11/30/2019 16:29:43 INFO 140657760761664] mean abs(target): 342890.394433[0m
+    [31m[11/30/2019 16:29:43 INFO 140657760761664] contains missing values: no[0m
+    [31m[11/30/2019 16:29:43 INFO 140657760761664] Small number of time series. Doing 10 number of passes over dataset per epoch.[0m
+    [31m[11/30/2019 16:29:43 INFO 140657760761664] Test set statistics:[0m
+    [31m[11/30/2019 16:29:43 INFO 140657760761664] Integer time series[0m
+    [31m[11/30/2019 16:29:43 INFO 140657760761664] number of time series: 3[0m
+    [31m[11/30/2019 16:29:43 INFO 140657760761664] number of observations: 1638[0m
+    [31m[11/30/2019 16:29:43 INFO 140657760761664] mean target length: 546[0m
+    [31m[11/30/2019 16:29:43 INFO 140657760761664] min/mean/max target: 5.0/342546.620269/1039874.0[0m
+    [31m[11/30/2019 16:29:43 INFO 140657760761664] mean abs(target): 342546.620269[0m
+    [31m[11/30/2019 16:29:43 INFO 140657760761664] contains missing values: no[0m
+    [31m[11/30/2019 16:29:43 INFO 140657760761664] nvidia-smi took: 0.0251910686493 secs to identify 0 gpus[0m
+    [31m[11/30/2019 16:29:43 INFO 140657760761664] Number of GPUs being used: 0[0m
+    [31m[11/30/2019 16:29:43 INFO 140657760761664] Create Store: local[0m
+    [31m#metrics {"Metrics": {"get_graph.time": {"count": 1, "max": 72.59106636047363, "sum": 72.59106636047363, "min": 72.59106636047363}}, "EndTime": 1575131383.872348, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131383.79892}
+    [0m
+    [31m[11/30/2019 16:29:43 INFO 140657760761664] Number of GPUs being used: 0[0m
+    [31m#metrics {"Metrics": {"initialize.time": {"count": 1, "max": 179.97288703918457, "sum": 179.97288703918457, "min": 179.97288703918457}}, "EndTime": 1575131383.979019, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131383.872428}
+    [0m
+    [31m[11/30/2019 16:29:44 INFO 140657760761664] Epoch[0] Batch[0] avg_epoch_loss=13.084117[0m
+    [31m[11/30/2019 16:29:44 INFO 140657760761664] #quality_metric: host=algo-1, epoch=0, batch=0 train loss <loss>=13.0841169357[0m
+    [31m[11/30/2019 16:29:44 INFO 140657760761664] Epoch[0] Batch[5] avg_epoch_loss=12.561649[0m
+    [31m[11/30/2019 16:29:44 INFO 140657760761664] #quality_metric: host=algo-1, epoch=0, batch=5 train loss <loss>=12.5616491636[0m
+    [31m[11/30/2019 16:29:44 INFO 140657760761664] Epoch[0] Batch [5]#011Speed: 1082.40 samples/sec#011loss=12.561649[0m
+    [31m[11/30/2019 16:29:44 INFO 140657760761664] processed a total of 304 examples[0m
+    [31m#metrics {"Metrics": {"epochs": {"count": 1, "max": 100, "sum": 100.0, "min": 100}, "update.time": {"count": 1, "max": 438.4138584136963, "sum": 438.4138584136963, "min": 438.4138584136963}}, "EndTime": 1575131384.417562, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131383.97908}
+    [0m
+    [31m[11/30/2019 16:29:44 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=693.261703397 records/second[0m
+    [31m[11/30/2019 16:29:44 INFO 140657760761664] #progress_metric: host=algo-1, completed 1 % of epochs[0m
+    [31m[11/30/2019 16:29:44 INFO 140657760761664] #quality_metric: host=algo-1, epoch=0, train loss <loss>=12.4054102898[0m
+    [31m[11/30/2019 16:29:44 INFO 140657760761664] best epoch loss so far[0m
+    [31m[11/30/2019 16:29:44 INFO 140657760761664] Saved checkpoint to "/opt/ml/model/state_69c66750-0a52-494a-838b-eff95388ff56-0000.params"[0m
+    [31m#metrics {"Metrics": {"state.serialize.time": {"count": 1, "max": 14.506101608276367, "sum": 14.506101608276367, "min": 14.506101608276367}}, "EndTime": 1575131384.432697, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131384.417626}
+    [0m
+    [31m[11/30/2019 16:29:44 INFO 140657760761664] Epoch[1] Batch[0] avg_epoch_loss=11.543509[0m
+    [31m[11/30/2019 16:29:44 INFO 140657760761664] #quality_metric: host=algo-1, epoch=1, batch=0 train loss <loss>=11.5435094833[0m
+    [31m[11/30/2019 16:29:44 INFO 140657760761664] Epoch[1] Batch[5] avg_epoch_loss=11.853811[0m
+    [31m[11/30/2019 16:29:44 INFO 140657760761664] #quality_metric: host=algo-1, epoch=1, batch=5 train loss <loss>=11.8538109461[0m
+    [31m[11/30/2019 16:29:44 INFO 140657760761664] Epoch[1] Batch [5]#011Speed: 1200.96 samples/sec#011loss=11.853811[0m
+    [31m[11/30/2019 16:29:44 INFO 140657760761664] processed a total of 303 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 313.37714195251465, "sum": 313.37714195251465, "min": 313.37714195251465}}, "EndTime": 1575131384.746183, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131384.432759}
+    [0m
+    [31m[11/30/2019 16:29:44 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=966.559590765 records/second[0m
+    [31m[11/30/2019 16:29:44 INFO 140657760761664] #progress_metric: host=algo-1, completed 2 % of epochs[0m
+    [31m[11/30/2019 16:29:44 INFO 140657760761664] #quality_metric: host=algo-1, epoch=1, train loss <loss>=11.612717247[0m
+    [31m[11/30/2019 16:29:44 INFO 140657760761664] best epoch loss so far[0m
+    [31m[11/30/2019 16:29:44 INFO 140657760761664] Saved checkpoint to "/opt/ml/model/state_180ffbc0-0b42-4349-aeb2-3dd997e411ee-0000.params"[0m
+    [31m#metrics {"Metrics": {"state.serialize.time": {"count": 1, "max": 14.13583755493164, "sum": 14.13583755493164, "min": 14.13583755493164}}, "EndTime": 1575131384.760916, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131384.746256}
+    [0m
+    [31m[11/30/2019 16:29:44 INFO 140657760761664] Epoch[2] Batch[0] avg_epoch_loss=11.307412[0m
+    [31m[11/30/2019 16:29:44 INFO 140657760761664] #quality_metric: host=algo-1, epoch=2, batch=0 train loss <loss>=11.3074121475[0m
+    [31m[11/30/2019 16:29:44 INFO 140657760761664] Epoch[2] Batch[5] avg_epoch_loss=11.342184[0m
+    [31m[11/30/2019 16:29:44 INFO 140657760761664] #quality_metric: host=algo-1, epoch=2, batch=5 train loss <loss>=11.3421843847[0m
+    [31m[11/30/2019 16:29:44 INFO 140657760761664] Epoch[2] Batch [5]#011Speed: 1186.24 samples/sec#011loss=11.342184[0m
+    [31m[11/30/2019 16:29:45 INFO 140657760761664] Epoch[2] Batch[10] avg_epoch_loss=11.268009[0m
+    [31m[11/30/2019 16:29:45 INFO 140657760761664] #quality_metric: host=algo-1, epoch=2, batch=10 train loss <loss>=11.1789993286[0m
+    [31m[11/30/2019 16:29:45 INFO 140657760761664] Epoch[2] Batch [10]#011Speed: 1131.09 samples/sec#011loss=11.178999[0m
+    [31m[11/30/2019 16:29:45 INFO 140657760761664] processed a total of 328 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 351.1309623718262, "sum": 351.1309623718262, "min": 351.1309623718262}}, "EndTime": 1575131385.112164, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131384.760976}
+    [0m
+    [31m[11/30/2019 16:29:45 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=933.823852992 records/second[0m
+    [31m[11/30/2019 16:29:45 INFO 140657760761664] #progress_metric: host=algo-1, completed 3 % of epochs[0m
+    [31m[11/30/2019 16:29:45 INFO 140657760761664] #quality_metric: host=algo-1, epoch=2, train loss <loss>=11.2680093592[0m
+    [31m[11/30/2019 16:29:45 INFO 140657760761664] best epoch loss so far[0m
+    [31m[11/30/2019 16:29:45 INFO 140657760761664] Saved checkpoint to "/opt/ml/model/state_cb8228c2-d13f-4282-a8be-6c0110ee4205-0000.params"[0m
+    [31m#metrics {"Metrics": {"state.serialize.time": {"count": 1, "max": 13.696908950805664, "sum": 13.696908950805664, "min": 13.696908950805664}}, "EndTime": 1575131385.126428, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131385.112241}
+    [0m
+    [31m[11/30/2019 16:29:45 INFO 140657760761664] Epoch[3] Batch[0] avg_epoch_loss=11.775387[0m
+    [31m[11/30/2019 16:29:45 INFO 140657760761664] #quality_metric: host=algo-1, epoch=3, batch=0 train loss <loss>=11.7753868103[0m
+    [31m[11/30/2019 16:29:45 INFO 140657760761664] Epoch[3] Batch[5] avg_epoch_loss=11.569252[0m
+    [31m[11/30/2019 16:29:45 INFO 140657760761664] #quality_metric: host=algo-1, epoch=3, batch=5 train loss <loss>=11.5692516963[0m
+    [31m[11/30/2019 16:29:45 INFO 140657760761664] Epoch[3] Batch [5]#011Speed: 1216.54 samples/sec#011loss=11.569252[0m
+    [31m[11/30/2019 16:29:45 INFO 140657760761664] processed a total of 296 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 320.6939697265625, "sum": 320.6939697265625, "min": 320.6939697265625}}, "EndTime": 1575131385.447235, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131385.126488}
+    [0m
+    [31m[11/30/2019 16:29:45 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=922.675933702 records/second[0m
+    [31m[11/30/2019 16:29:45 INFO 140657760761664] #progress_metric: host=algo-1, completed 4 % of epochs[0m
+    [31m[11/30/2019 16:29:45 INFO 140657760761664] #quality_metric: host=algo-1, epoch=3, train loss <loss>=11.6022842407[0m
+    [31m[11/30/2019 16:29:45 INFO 140657760761664] loss did not improve[0m
+    [31m[11/30/2019 16:29:45 INFO 140657760761664] Epoch[4] Batch[0] avg_epoch_loss=11.529972[0m
+    [31m[11/30/2019 16:29:45 INFO 140657760761664] #quality_metric: host=algo-1, epoch=4, batch=0 train loss <loss>=11.5299720764[0m
+    [31m[11/30/2019 16:29:45 INFO 140657760761664] Epoch[4] Batch[5] avg_epoch_loss=11.531543[0m
+    [31m[11/30/2019 16:29:45 INFO 140657760761664] #quality_metric: host=algo-1, epoch=4, batch=5 train loss <loss>=11.531542778[0m
+    [31m[11/30/2019 16:29:45 INFO 140657760761664] Epoch[4] Batch [5]#011Speed: 1128.21 samples/sec#011loss=11.531543[0m
+    [31m[11/30/2019 16:29:45 INFO 140657760761664] processed a total of 308 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 336.6720676422119, "sum": 336.6720676422119, "min": 336.6720676422119}}, "EndTime": 1575131385.784423, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131385.447313}
+    [0m
+    [31m[11/30/2019 16:29:45 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=914.529829482 records/second[0m
+    [31m[11/30/2019 16:29:45 INFO 140657760761664] #progress_metric: host=algo-1, completed 5 % of epochs[0m
+    [31m[11/30/2019 16:29:45 INFO 140657760761664] #quality_metric: host=algo-1, epoch=4, train loss <loss>=11.496231842[0m
+    [31m[11/30/2019 16:29:45 INFO 140657760761664] loss did not improve[0m
+    [31m[11/30/2019 16:29:45 INFO 140657760761664] Epoch[5] Batch[0] avg_epoch_loss=11.429693[0m
+    [31m[11/30/2019 16:29:45 INFO 140657760761664] #quality_metric: host=algo-1, epoch=5, batch=0 train loss <loss>=11.429693222[0m
+    [31m[11/30/2019 16:29:46 INFO 140657760761664] Epoch[5] Batch[5] avg_epoch_loss=11.502197[0m
+    [31m[11/30/2019 16:29:46 INFO 140657760761664] #quality_metric: host=algo-1, epoch=5, batch=5 train loss <loss>=11.5021974246[0m
+    [31m[11/30/2019 16:29:46 INFO 140657760761664] Epoch[5] Batch [5]#011Speed: 1210.92 samples/sec#011loss=11.502197[0m
+    [31m[11/30/2019 16:29:46 INFO 140657760761664] Epoch[5] Batch[10] avg_epoch_loss=11.288384[0m
+    [31m[11/30/2019 16:29:46 INFO 140657760761664] #quality_metric: host=algo-1, epoch=5, batch=10 train loss <loss>=11.0318073273[0m
+    [31m[11/30/2019 16:29:46 INFO 140657760761664] Epoch[5] Batch [10]#011Speed: 1166.00 samples/sec#011loss=11.031807[0m
+    [31m[11/30/2019 16:29:46 INFO 140657760761664] processed a total of 336 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 367.095947265625, "sum": 367.095947265625, "min": 367.095947265625}}, "EndTime": 1575131386.152045, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131385.7845}
+    [0m
+    [31m[11/30/2019 16:29:46 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=915.037687483 records/second[0m
+    [31m[11/30/2019 16:29:46 INFO 140657760761664] #progress_metric: host=algo-1, completed 6 % of epochs[0m
+    [31m[11/30/2019 16:29:46 INFO 140657760761664] #quality_metric: host=algo-1, epoch=5, train loss <loss>=11.288383744[0m
+    [31m[11/30/2019 16:29:46 INFO 140657760761664] loss did not improve[0m
+    [31m[11/30/2019 16:29:46 INFO 140657760761664] Epoch[6] Batch[0] avg_epoch_loss=11.120630[0m
+    [31m[11/30/2019 16:29:46 INFO 140657760761664] #quality_metric: host=algo-1, epoch=6, batch=0 train loss <loss>=11.1206302643[0m
+    [31m[11/30/2019 16:29:46 INFO 140657760761664] Epoch[6] Batch[5] avg_epoch_loss=11.133206[0m
+    [31m[11/30/2019 16:29:46 INFO 140657760761664] #quality_metric: host=algo-1, epoch=6, batch=5 train loss <loss>=11.1332060496[0m
+    [31m[11/30/2019 16:29:46 INFO 140657760761664] Epoch[6] Batch [5]#011Speed: 1149.90 samples/sec#011loss=11.133206[0m
+    [31m[11/30/2019 16:29:46 INFO 140657760761664] processed a total of 305 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 314.59808349609375, "sum": 314.59808349609375, "min": 314.59808349609375}}, "EndTime": 1575131386.467154, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131386.15211}
+    [0m
+    [31m[11/30/2019 16:29:46 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=969.142829437 records/second[0m
+    [31m[11/30/2019 16:29:46 INFO 140657760761664] #progress_metric: host=algo-1, completed 7 % of epochs[0m
+    [31m[11/30/2019 16:29:46 INFO 140657760761664] #quality_metric: host=algo-1, epoch=6, train loss <loss>=11.1763834[0m
+    [31m[11/30/2019 16:29:46 INFO 140657760761664] best epoch loss so far[0m
+    [31m[11/30/2019 16:29:46 INFO 140657760761664] Saved checkpoint to "/opt/ml/model/state_bc44f47d-8f44-4ede-b4e3-9e726c1c9b8c-0000.params"[0m
+    [31m#metrics {"Metrics": {"state.serialize.time": {"count": 1, "max": 14.055013656616211, "sum": 14.055013656616211, "min": 14.055013656616211}}, "EndTime": 1575131386.481823, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131386.46723}
+    [0m
+    [31m[11/30/2019 16:29:46 INFO 140657760761664] Epoch[7] Batch[0] avg_epoch_loss=11.204243[0m
+    [31m[11/30/2019 16:29:46 INFO 140657760761664] #quality_metric: host=algo-1, epoch=7, batch=0 train loss <loss>=11.2042427063[0m
+    [31m[11/30/2019 16:29:46 INFO 140657760761664] Epoch[7] Batch[5] avg_epoch_loss=11.445836[0m
+    [31m[11/30/2019 16:29:46 INFO 140657760761664] #quality_metric: host=algo-1, epoch=7, batch=5 train loss <loss>=11.4458359083[0m
+    [31m[11/30/2019 16:29:46 INFO 140657760761664] Epoch[7] Batch [5]#011Speed: 1099.40 samples/sec#011loss=11.445836[0m
+    [31m[11/30/2019 16:29:46 INFO 140657760761664] processed a total of 316 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 322.6950168609619, "sum": 322.6950168609619, "min": 322.6950168609619}}, "EndTime": 1575131386.804633, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131386.481883}
+    [0m
+    [31m[11/30/2019 16:29:46 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=978.940348457 records/second[0m
+    [31m[11/30/2019 16:29:46 INFO 140657760761664] #progress_metric: host=algo-1, completed 8 % of epochs[0m
+    [31m[11/30/2019 16:29:46 INFO 140657760761664] #quality_metric: host=algo-1, epoch=7, train loss <loss>=11.4341204643[0m
+    [31m[11/30/2019 16:29:46 INFO 140657760761664] loss did not improve[0m
+    [31m[11/30/2019 16:29:46 INFO 140657760761664] Epoch[8] Batch[0] avg_epoch_loss=11.525706[0m
+    [31m[11/30/2019 16:29:46 INFO 140657760761664] #quality_metric: host=algo-1, epoch=8, batch=0 train loss <loss>=11.5257062912[0m
+    [31m[11/30/2019 16:29:47 INFO 140657760761664] Epoch[8] Batch[5] avg_epoch_loss=11.321895[0m
+    [31m[11/30/2019 16:29:47 INFO 140657760761664] #quality_metric: host=algo-1, epoch=8, batch=5 train loss <loss>=11.3218946457[0m
+    [31m[11/30/2019 16:29:47 INFO 140657760761664] Epoch[8] Batch [5]#011Speed: 1002.87 samples/sec#011loss=11.321895[0m
+    [31m[11/30/2019 16:29:47 INFO 140657760761664] Epoch[8] Batch[10] avg_epoch_loss=10.957104[0m
+    [31m[11/30/2019 16:29:47 INFO 140657760761664] #quality_metric: host=algo-1, epoch=8, batch=10 train loss <loss>=10.5193548203[0m
+    [31m[11/30/2019 16:29:47 INFO 140657760761664] Epoch[8] Batch [10]#011Speed: 1042.35 samples/sec#011loss=10.519355[0m
+    [31m[11/30/2019 16:29:47 INFO 140657760761664] processed a total of 326 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 383.8310241699219, "sum": 383.8310241699219, "min": 383.8310241699219}}, "EndTime": 1575131387.189002, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131386.8047}
+    [0m
+    [31m[11/30/2019 16:29:47 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=849.088935738 records/second[0m
+    [31m[11/30/2019 16:29:47 INFO 140657760761664] #progress_metric: host=algo-1, completed 9 % of epochs[0m
+    [31m[11/30/2019 16:29:47 INFO 140657760761664] #quality_metric: host=algo-1, epoch=8, train loss <loss>=10.9571038159[0m
+    [31m[11/30/2019 16:29:47 INFO 140657760761664] best epoch loss so far[0m
+    [31m[11/30/2019 16:29:47 INFO 140657760761664] Saved checkpoint to "/opt/ml/model/state_3517a004-cfca-454a-a835-341f5c4e6434-0000.params"[0m
+    [31m#metrics {"Metrics": {"state.serialize.time": {"count": 1, "max": 21.010875701904297, "sum": 21.010875701904297, "min": 21.010875701904297}}, "EndTime": 1575131387.210623, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131387.189077}
+    [0m
+    [31m[11/30/2019 16:29:47 INFO 140657760761664] Epoch[9] Batch[0] avg_epoch_loss=11.336051[0m
+    [31m[11/30/2019 16:29:47 INFO 140657760761664] #quality_metric: host=algo-1, epoch=9, batch=0 train loss <loss>=11.3360509872[0m
+    [31m[11/30/2019 16:29:47 INFO 140657760761664] Epoch[9] Batch[5] avg_epoch_loss=11.312789[0m
+    [31m[11/30/2019 16:29:47 INFO 140657760761664] #quality_metric: host=algo-1, epoch=9, batch=5 train loss <loss>=11.3127894402[0m
+    [31m[11/30/2019 16:29:47 INFO 140657760761664] Epoch[9] Batch [5]#011Speed: 1033.45 samples/sec#011loss=11.312789[0m
+    [31m[11/30/2019 16:29:47 INFO 140657760761664] Epoch[9] Batch[10] avg_epoch_loss=11.353988[0m
+    [31m[11/30/2019 16:29:47 INFO 140657760761664] #quality_metric: host=algo-1, epoch=9, batch=10 train loss <loss>=11.403427124[0m
+    [31m[11/30/2019 16:29:47 INFO 140657760761664] Epoch[9] Batch [10]#011Speed: 881.09 samples/sec#011loss=11.403427[0m
+    [31m[11/30/2019 16:29:47 INFO 140657760761664] processed a total of 336 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 413.4540557861328, "sum": 413.4540557861328, "min": 413.4540557861328}}, "EndTime": 1575131387.624198, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131387.210689}
+    [0m
+    [31m[11/30/2019 16:29:47 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=812.447549835 records/second[0m
+    [31m[11/30/2019 16:29:47 INFO 140657760761664] #progress_metric: host=algo-1, completed 10 % of epochs[0m
+    [31m[11/30/2019 16:29:47 INFO 140657760761664] #quality_metric: host=algo-1, epoch=9, train loss <loss>=11.3539883874[0m
+    [31m[11/30/2019 16:29:47 INFO 140657760761664] loss did not improve[0m
+    [31m[11/30/2019 16:29:47 INFO 140657760761664] Epoch[10] Batch[0] avg_epoch_loss=10.794859[0m
+    [31m[11/30/2019 16:29:47 INFO 140657760761664] #quality_metric: host=algo-1, epoch=10, batch=0 train loss <loss>=10.7948589325[0m
+    [31m[11/30/2019 16:29:47 INFO 140657760761664] Epoch[10] Batch[5] avg_epoch_loss=11.195995[0m
+    [31m[11/30/2019 16:29:47 INFO 140657760761664] #quality_metric: host=algo-1, epoch=10, batch=5 train loss <loss>=11.1959945361[0m
+    [31m[11/30/2019 16:29:47 INFO 140657760761664] Epoch[10] Batch [5]#011Speed: 949.42 samples/sec#011loss=11.195995[0m
+    [31m[11/30/2019 16:29:48 INFO 140657760761664] Epoch[10] Batch[10] avg_epoch_loss=11.216783[0m
+    [31m[11/30/2019 16:29:48 INFO 140657760761664] #quality_metric: host=algo-1, epoch=10, batch=10 train loss <loss>=11.2417282104[0m
+    [31m[11/30/2019 16:29:48 INFO 140657760761664] Epoch[10] Batch [10]#011Speed: 899.09 samples/sec#011loss=11.241728[0m
+    [31m[11/30/2019 16:29:48 INFO 140657760761664] processed a total of 350 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 435.26315689086914, "sum": 435.26315689086914, "min": 435.26315689086914}}, "EndTime": 1575131388.060028, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131387.624271}
+    [0m
+    [31m[11/30/2019 16:29:48 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=803.899002688 records/second[0m
+    [31m[11/30/2019 16:29:48 INFO 140657760761664] #progress_metric: host=algo-1, completed 11 % of epochs[0m
+    [31m[11/30/2019 16:29:48 INFO 140657760761664] #quality_metric: host=algo-1, epoch=10, train loss <loss>=11.2167825699[0m
+    [31m[11/30/2019 16:29:48 INFO 140657760761664] loss did not improve[0m
+    [31m[11/30/2019 16:29:48 INFO 140657760761664] Epoch[11] Batch[0] avg_epoch_loss=11.323181[0m
+    [31m[11/30/2019 16:29:48 INFO 140657760761664] #quality_metric: host=algo-1, epoch=11, batch=0 train loss <loss>=11.3231811523[0m
+    [31m[11/30/2019 16:29:48 INFO 140657760761664] Epoch[11] Batch[5] avg_epoch_loss=11.015685[0m
+    [31m[11/30/2019 16:29:48 INFO 140657760761664] #quality_metric: host=algo-1, epoch=11, batch=5 train loss <loss>=11.0156849225[0m
+    [31m[11/30/2019 16:29:48 INFO 140657760761664] Epoch[11] Batch [5]#011Speed: 847.25 samples/sec#011loss=11.015685[0m
+    [31m[11/30/2019 16:29:48 INFO 140657760761664] Epoch[11] Batch[10] avg_epoch_loss=11.156606[0m
+    [31m[11/30/2019 16:29:48 INFO 140657760761664] #quality_metric: host=algo-1, epoch=11, batch=10 train loss <loss>=11.3257108688[0m
+    [31m[11/30/2019 16:29:48 INFO 140657760761664] Epoch[11] Batch [10]#011Speed: 1025.19 samples/sec#011loss=11.325711[0m
+    [31m[11/30/2019 16:29:48 INFO 140657760761664] processed a total of 333 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 455.63697814941406, "sum": 455.63697814941406, "min": 455.63697814941406}}, "EndTime": 1575131388.516234, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131388.060105}
+    [0m
+    [31m[11/30/2019 16:29:48 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=730.671786467 records/second[0m
+    [31m[11/30/2019 16:29:48 INFO 140657760761664] #progress_metric: host=algo-1, completed 12 % of epochs[0m
+    [31m[11/30/2019 16:29:48 INFO 140657760761664] #quality_metric: host=algo-1, epoch=11, train loss <loss>=11.1566058072[0m
+    [31m[11/30/2019 16:29:48 INFO 140657760761664] loss did not improve[0m
+    [31m[11/30/2019 16:29:48 INFO 140657760761664] Epoch[12] Batch[0] avg_epoch_loss=11.386516[0m
+    [31m[11/30/2019 16:29:48 INFO 140657760761664] #quality_metric: host=algo-1, epoch=12, batch=0 train loss <loss>=11.3865156174[0m
+    [31m[11/30/2019 16:29:48 INFO 140657760761664] Epoch[12] Batch[5] avg_epoch_loss=11.044365[0m
+    [31m[11/30/2019 16:29:48 INFO 140657760761664] #quality_metric: host=algo-1, epoch=12, batch=5 train loss <loss>=11.044365406[0m
+    [31m[11/30/2019 16:29:48 INFO 140657760761664] Epoch[12] Batch [5]#011Speed: 1024.15 samples/sec#011loss=11.044365[0m
+    [31m[11/30/2019 16:29:48 INFO 140657760761664] Epoch[12] Batch[10] avg_epoch_loss=11.160591[0m
+    [31m[11/30/2019 16:29:48 INFO 140657760761664] #quality_metric: host=algo-1, epoch=12, batch=10 train loss <loss>=11.3000627518[0m
+    [31m[11/30/2019 16:29:48 INFO 140657760761664] Epoch[12] Batch [10]#011Speed: 1059.63 samples/sec#011loss=11.300063[0m
+    [31m[11/30/2019 16:29:48 INFO 140657760761664] processed a total of 335 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 406.9790840148926, "sum": 406.9790840148926, "min": 406.9790840148926}}, "EndTime": 1575131388.923674, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131388.516307}
+    [0m
+    [31m[11/30/2019 16:29:48 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=822.915883581 records/second[0m
+    [31m[11/30/2019 16:29:48 INFO 140657760761664] #progress_metric: host=algo-1, completed 13 % of epochs[0m
+    [31m[11/30/2019 16:29:48 INFO 140657760761664] #quality_metric: host=algo-1, epoch=12, train loss <loss>=11.1605914723[0m
+    [31m[11/30/2019 16:29:48 INFO 140657760761664] loss did not improve[0m
+    [31m[11/30/2019 16:29:49 INFO 140657760761664] Epoch[13] Batch[0] avg_epoch_loss=11.314456[0m
+    [31m[11/30/2019 16:29:49 INFO 140657760761664] #quality_metric: host=algo-1, epoch=13, batch=0 train loss <loss>=11.314455986[0m
+    [31m[11/30/2019 16:29:49 INFO 140657760761664] Epoch[13] Batch[5] avg_epoch_loss=11.248668[0m
+    [31m[11/30/2019 16:29:49 INFO 140657760761664] #quality_metric: host=algo-1, epoch=13, batch=5 train loss <loss>=11.2486680349[0m
+    [31m[11/30/2019 16:29:49 INFO 140657760761664] Epoch[13] Batch [5]#011Speed: 1105.80 samples/sec#011loss=11.248668[0m
+    [31m[11/30/2019 16:29:49 INFO 140657760761664] Epoch[13] Batch[10] avg_epoch_loss=11.205602[0m
+    [31m[11/30/2019 16:29:49 INFO 140657760761664] #quality_metric: host=algo-1, epoch=13, batch=10 train loss <loss>=11.1539218903[0m
+    [31m[11/30/2019 16:29:49 INFO 140657760761664] Epoch[13] Batch [10]#011Speed: 995.09 samples/sec#011loss=11.153922[0m
+    [31m[11/30/2019 16:29:49 INFO 140657760761664] processed a total of 348 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 397.4108695983887, "sum": 397.4108695983887, "min": 397.4108695983887}}, "EndTime": 1575131389.321589, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131388.923749}
+    [0m
+    [31m[11/30/2019 16:29:49 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=875.46058706 records/second[0m
+    [31m[11/30/2019 16:29:49 INFO 140657760761664] #progress_metric: host=algo-1, completed 14 % of epochs[0m
+    [31m[11/30/2019 16:29:49 INFO 140657760761664] #quality_metric: host=algo-1, epoch=13, train loss <loss>=11.2056016055[0m
+    [31m[11/30/2019 16:29:49 INFO 140657760761664] loss did not improve[0m
+    [31m[11/30/2019 16:29:49 INFO 140657760761664] Epoch[14] Batch[0] avg_epoch_loss=10.776047[0m
+    [31m[11/30/2019 16:29:49 INFO 140657760761664] #quality_metric: host=algo-1, epoch=14, batch=0 train loss <loss>=10.7760467529[0m
+    [31m[11/30/2019 16:29:49 INFO 140657760761664] Epoch[14] Batch[5] avg_epoch_loss=10.890142[0m
+    [31m[11/30/2019 16:29:49 INFO 140657760761664] #quality_metric: host=algo-1, epoch=14, batch=5 train loss <loss>=10.890141805[0m
+    [31m[11/30/2019 16:29:49 INFO 140657760761664] Epoch[14] Batch [5]#011Speed: 1192.29 samples/sec#011loss=10.890142[0m
+    [31m[11/30/2019 16:29:49 INFO 140657760761664] Epoch[14] Batch[10] avg_epoch_loss=10.867761[0m
+    [31m[11/30/2019 16:29:49 INFO 140657760761664] #quality_metric: host=algo-1, epoch=14, batch=10 train loss <loss>=10.8409036636[0m
+    [31m[11/30/2019 16:29:49 INFO 140657760761664] Epoch[14] Batch [10]#011Speed: 1086.88 samples/sec#011loss=10.840904[0m
+    [31m[11/30/2019 16:29:49 INFO 140657760761664] processed a total of 328 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 359.12179946899414, "sum": 359.12179946899414, "min": 359.12179946899414}}, "EndTime": 1575131389.681233, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131389.321647}
+    [0m
+    [31m[11/30/2019 16:29:49 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=913.043344833 records/second[0m
+    [31m[11/30/2019 16:29:49 INFO 140657760761664] #progress_metric: host=algo-1, completed 15 % of epochs[0m
+    [31m[11/30/2019 16:29:49 INFO 140657760761664] #quality_metric: host=algo-1, epoch=14, train loss <loss>=10.8677608317[0m
+    [31m[11/30/2019 16:29:49 INFO 140657760761664] best epoch loss so far[0m
+    [31m[11/30/2019 16:29:49 INFO 140657760761664] Saved checkpoint to "/opt/ml/model/state_0fec42b3-c584-4660-9bba-d7bcd3a29e84-0000.params"[0m
+    [31m#metrics {"Metrics": {"state.serialize.time": {"count": 1, "max": 17.184019088745117, "sum": 17.184019088745117, "min": 17.184019088745117}}, "EndTime": 1575131389.69897, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131389.681311}
+    [0m
+    [31m[11/30/2019 16:29:49 INFO 140657760761664] Epoch[15] Batch[0] avg_epoch_loss=10.758276[0m
+    [31m[11/30/2019 16:29:49 INFO 140657760761664] #quality_metric: host=algo-1, epoch=15, batch=0 train loss <loss>=10.7582759857[0m
+    [31m[11/30/2019 16:29:49 INFO 140657760761664] Epoch[15] Batch[5] avg_epoch_loss=11.068750[0m
+    [31m[11/30/2019 16:29:49 INFO 140657760761664] #quality_metric: host=algo-1, epoch=15, batch=5 train loss <loss>=11.0687500636[0m
+    [31m[11/30/2019 16:29:49 INFO 140657760761664] Epoch[15] Batch [5]#011Speed: 1117.68 samples/sec#011loss=11.068750[0m
+    [31m[11/30/2019 16:29:50 INFO 140657760761664] processed a total of 300 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 329.8060894012451, "sum": 329.8060894012451, "min": 329.8060894012451}}, "EndTime": 1575131390.028907, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131389.699043}
+    [0m
+    [31m[11/30/2019 16:29:50 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=909.302658336 records/second[0m
+    [31m[11/30/2019 16:29:50 INFO 140657760761664] #progress_metric: host=algo-1, completed 16 % of epochs[0m
+    [31m[11/30/2019 16:29:50 INFO 140657760761664] #quality_metric: host=algo-1, epoch=15, train loss <loss>=10.9549746513[0m
+    [31m[11/30/2019 16:29:50 INFO 140657760761664] loss did not improve[0m
+    [31m[11/30/2019 16:29:50 INFO 140657760761664] Epoch[16] Batch[0] avg_epoch_loss=11.169759[0m
+    [31m[11/30/2019 16:29:50 INFO 140657760761664] #quality_metric: host=algo-1, epoch=16, batch=0 train loss <loss>=11.1697587967[0m
+    [31m[11/30/2019 16:29:50 INFO 140657760761664] Epoch[16] Batch[5] avg_epoch_loss=11.076884[0m
+    [31m[11/30/2019 16:29:50 INFO 140657760761664] #quality_metric: host=algo-1, epoch=16, batch=5 train loss <loss>=11.0768841108[0m
+    [31m[11/30/2019 16:29:50 INFO 140657760761664] Epoch[16] Batch [5]#011Speed: 1164.08 samples/sec#011loss=11.076884[0m
+    [31m[11/30/2019 16:29:50 INFO 140657760761664] processed a total of 318 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 340.06404876708984, "sum": 340.06404876708984, "min": 340.06404876708984}}, "EndTime": 1575131390.369544, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131390.028989}
+    [0m
+    [31m[11/30/2019 16:29:50 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=934.826960924 records/second[0m
+    [31m[11/30/2019 16:29:50 INFO 140657760761664] #progress_metric: host=algo-1, completed 17 % of epochs[0m
+    [31m[11/30/2019 16:29:50 INFO 140657760761664] #quality_metric: host=algo-1, epoch=16, train loss <loss>=10.9921466827[0m
+    [31m[11/30/2019 16:29:50 INFO 140657760761664] loss did not improve[0m
+    [31m[11/30/2019 16:29:50 INFO 140657760761664] Epoch[17] Batch[0] avg_epoch_loss=11.118506[0m
+    [31m[11/30/2019 16:29:50 INFO 140657760761664] #quality_metric: host=algo-1, epoch=17, batch=0 train loss <loss>=11.1185064316[0m
+    [31m[11/30/2019 16:29:50 INFO 140657760761664] Epoch[17] Batch[5] avg_epoch_loss=10.985323[0m
+    [31m[11/30/2019 16:29:50 INFO 140657760761664] #quality_metric: host=algo-1, epoch=17, batch=5 train loss <loss>=10.9853231112[0m
+    [31m[11/30/2019 16:29:50 INFO 140657760761664] Epoch[17] Batch [5]#011Speed: 1146.54 samples/sec#011loss=10.985323[0m
+    [31m[11/30/2019 16:29:50 INFO 140657760761664] processed a total of 309 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 323.4109878540039, "sum": 323.4109878540039, "min": 323.4109878540039}}, "EndTime": 1575131390.693494, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131390.369612}
+    [0m
+    [31m[11/30/2019 16:29:50 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=955.139269164 records/second[0m
+    [31m[11/30/2019 16:29:50 INFO 140657760761664] #progress_metric: host=algo-1, completed 18 % of epochs[0m
+    [31m[11/30/2019 16:29:50 INFO 140657760761664] #quality_metric: host=algo-1, epoch=17, train loss <loss>=11.0881063461[0m
+    [31m[11/30/2019 16:29:50 INFO 140657760761664] loss did not improve[0m
+    [31m[11/30/2019 16:29:50 INFO 140657760761664] Epoch[18] Batch[0] avg_epoch_loss=10.437140[0m
+    [31m[11/30/2019 16:29:50 INFO 140657760761664] #quality_metric: host=algo-1, epoch=18, batch=0 train loss <loss>=10.4371395111[0m
+    [31m[11/30/2019 16:29:50 INFO 140657760761664] Epoch[18] Batch[5] avg_epoch_loss=11.002823[0m
+    [31m[11/30/2019 16:29:50 INFO 140657760761664] #quality_metric: host=algo-1, epoch=18, batch=5 train loss <loss>=11.0028233528[0m
+    [31m[11/30/2019 16:29:50 INFO 140657760761664] Epoch[18] Batch [5]#011Speed: 1213.98 samples/sec#011loss=11.002823[0m
+    [31m[11/30/2019 16:29:51 INFO 140657760761664] processed a total of 318 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 339.57600593566895, "sum": 339.57600593566895, "min": 339.57600593566895}}, "EndTime": 1575131391.03361, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131390.693562}
+    [0m
+    [31m[11/30/2019 16:29:51 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=936.147746678 records/second[0m
+    [31m[11/30/2019 16:29:51 INFO 140657760761664] #progress_metric: host=algo-1, completed 19 % of epochs[0m
+    [31m[11/30/2019 16:29:51 INFO 140657760761664] #quality_metric: host=algo-1, epoch=18, train loss <loss>=10.9492453575[0m
+    [31m[11/30/2019 16:29:51 INFO 140657760761664] loss did not improve[0m
+    [31m[11/30/2019 16:29:51 INFO 140657760761664] Epoch[19] Batch[0] avg_epoch_loss=11.144054[0m
+    [31m[11/30/2019 16:29:51 INFO 140657760761664] #quality_metric: host=algo-1, epoch=19, batch=0 train loss <loss>=11.1440544128[0m
+    [31m[11/30/2019 16:29:51 INFO 140657760761664] Epoch[19] Batch[5] avg_epoch_loss=11.232653[0m
+    [31m[11/30/2019 16:29:51 INFO 140657760761664] #quality_metric: host=algo-1, epoch=19, batch=5 train loss <loss>=11.2326534589[0m
+    [31m[11/30/2019 16:29:51 INFO 140657760761664] Epoch[19] Batch [5]#011Speed: 1090.45 samples/sec#011loss=11.232653[0m
+    [31m[11/30/2019 16:29:51 INFO 140657760761664] Epoch[19] Batch[10] avg_epoch_loss=11.190658[0m
+    [31m[11/30/2019 16:29:51 INFO 140657760761664] #quality_metric: host=algo-1, epoch=19, batch=10 train loss <loss>=11.1402643204[0m
+    [31m[11/30/2019 16:29:51 INFO 140657760761664] Epoch[19] Batch [10]#011Speed: 1222.95 samples/sec#011loss=11.140264[0m
+    [31m[11/30/2019 16:29:51 INFO 140657760761664] processed a total of 335 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 382.02691078186035, "sum": 382.02691078186035, "min": 382.02691078186035}}, "EndTime": 1575131391.416161, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131391.033688}
+    [0m
+    [31m[11/30/2019 16:29:51 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=876.649359433 records/second[0m
+    [31m[11/30/2019 16:29:51 INFO 140657760761664] #progress_metric: host=algo-1, completed 20 % of epochs[0m
+    [31m[11/30/2019 16:29:51 INFO 140657760761664] #quality_metric: host=algo-1, epoch=19, train loss <loss>=11.1906583959[0m
+    [31m[11/30/2019 16:29:51 INFO 140657760761664] loss did not improve[0m
+    [31m[11/30/2019 16:29:51 INFO 140657760761664] Epoch[20] Batch[0] avg_epoch_loss=10.614120[0m
+    [31m[11/30/2019 16:29:51 INFO 140657760761664] #quality_metric: host=algo-1, epoch=20, batch=0 train loss <loss>=10.6141204834[0m
+    [31m[11/30/2019 16:29:51 INFO 140657760761664] Epoch[20] Batch[5] avg_epoch_loss=10.965454[0m
+    [31m[11/30/2019 16:29:51 INFO 140657760761664] #quality_metric: host=algo-1, epoch=20, batch=5 train loss <loss>=10.9654542605[0m
+    [31m[11/30/2019 16:29:51 INFO 140657760761664] Epoch[20] Batch [5]#011Speed: 1217.96 samples/sec#011loss=10.965454[0m
+    [31m[11/30/2019 16:29:51 INFO 140657760761664] Epoch[20] Batch[10] avg_epoch_loss=11.028810[0m
+    [31m[11/30/2019 16:29:51 INFO 140657760761664] #quality_metric: host=algo-1, epoch=20, batch=10 train loss <loss>=11.1048358917[0m
+    [31m[11/30/2019 16:29:51 INFO 140657760761664] Epoch[20] Batch [10]#011Speed: 973.56 samples/sec#011loss=11.104836[0m
+    [31m[11/30/2019 16:29:51 INFO 140657760761664] processed a total of 333 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 387.83907890319824, "sum": 387.83907890319824, "min": 387.83907890319824}}, "EndTime": 1575131391.804478, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131391.416235}
+    [0m
+    [31m[11/30/2019 16:29:51 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=858.351303134 records/second[0m
+    [31m[11/30/2019 16:29:51 INFO 140657760761664] #progress_metric: host=algo-1, completed 21 % of epochs[0m
+    [31m[11/30/2019 16:29:51 INFO 140657760761664] #quality_metric: host=algo-1, epoch=20, train loss <loss>=11.0288095474[0m
+    [31m[11/30/2019 16:29:51 INFO 140657760761664] loss did not improve[0m
+    [31m[11/30/2019 16:29:51 INFO 140657760761664] Epoch[21] Batch[0] avg_epoch_loss=10.710171[0m
+    [31m[11/30/2019 16:29:51 INFO 140657760761664] #quality_metric: host=algo-1, epoch=21, batch=0 train loss <loss>=10.7101707458[0m
+    [31m[11/30/2019 16:29:52 INFO 140657760761664] Epoch[21] Batch[5] avg_epoch_loss=10.991527[0m
+    [31m[11/30/2019 16:29:52 INFO 140657760761664] #quality_metric: host=algo-1, epoch=21, batch=5 train loss <loss>=10.9915272395[0m
+    [31m[11/30/2019 16:29:52 INFO 140657760761664] Epoch[21] Batch [5]#011Speed: 1129.43 samples/sec#011loss=10.991527[0m
+    [31m[11/30/2019 16:29:52 INFO 140657760761664] processed a total of 303 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 352.0510196685791, "sum": 352.0510196685791, "min": 352.0510196685791}}, "EndTime": 1575131392.15703, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131391.804556}
+    [0m
+    [31m[11/30/2019 16:29:52 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=860.387525515 records/second[0m
+    [31m[11/30/2019 16:29:52 INFO 140657760761664] #progress_metric: host=algo-1, completed 22 % of epochs[0m
+    [31m[11/30/2019 16:29:52 INFO 140657760761664] #quality_metric: host=algo-1, epoch=21, train loss <loss>=10.8595946312[0m
+    [31m[11/30/2019 16:29:52 INFO 140657760761664] best epoch loss so far[0m
+    [31m[11/30/2019 16:29:52 INFO 140657760761664] Saved checkpoint to "/opt/ml/model/state_afd195b9-b81b-481a-b83f-fc3da9cc67d7-0000.params"[0m
+    [31m#metrics {"Metrics": {"state.serialize.time": {"count": 1, "max": 20.630836486816406, "sum": 20.630836486816406, "min": 20.630836486816406}}, "EndTime": 1575131392.178267, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131392.15711}
+    [0m
+    [31m[11/30/2019 16:29:52 INFO 140657760761664] Epoch[22] Batch[0] avg_epoch_loss=10.801229[0m
+    [31m[11/30/2019 16:29:52 INFO 140657760761664] #quality_metric: host=algo-1, epoch=22, batch=0 train loss <loss>=10.8012285233[0m
+    [31m[11/30/2019 16:29:52 INFO 140657760761664] Epoch[22] Batch[5] avg_epoch_loss=10.897065[0m
+    [31m[11/30/2019 16:29:52 INFO 140657760761664] #quality_metric: host=algo-1, epoch=22, batch=5 train loss <loss>=10.8970645269[0m
+    [31m[11/30/2019 16:29:52 INFO 140657760761664] Epoch[22] Batch [5]#011Speed: 1235.31 samples/sec#011loss=10.897065[0m
+    [31m[11/30/2019 16:29:52 INFO 140657760761664] Epoch[22] Batch[10] avg_epoch_loss=10.918552[0m
+    [31m[11/30/2019 16:29:52 INFO 140657760761664] #quality_metric: host=algo-1, epoch=22, batch=10 train loss <loss>=10.9443367004[0m
+    [31m[11/30/2019 16:29:52 INFO 140657760761664] Epoch[22] Batch [10]#011Speed: 1233.26 samples/sec#011loss=10.944337[0m
+    [31m[11/30/2019 16:29:52 INFO 140657760761664] processed a total of 336 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 355.93295097351074, "sum": 355.93295097351074, "min": 355.93295097351074}}, "EndTime": 1575131392.534308, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131392.178325}
+    [0m
+    [31m[11/30/2019 16:29:52 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=943.719874562 records/second[0m
+    [31m[11/30/2019 16:29:52 INFO 140657760761664] #progress_metric: host=algo-1, completed 23 % of epochs[0m
+    [31m[11/30/2019 16:29:52 INFO 140657760761664] #quality_metric: host=algo-1, epoch=22, train loss <loss>=10.9185518785[0m
+    [31m[11/30/2019 16:29:52 INFO 140657760761664] loss did not improve[0m
+    [31m[11/30/2019 16:29:52 INFO 140657760761664] Epoch[23] Batch[0] avg_epoch_loss=10.825591[0m
+    [31m[11/30/2019 16:29:52 INFO 140657760761664] #quality_metric: host=algo-1, epoch=23, batch=0 train loss <loss>=10.8255910873[0m
+    [31m[11/30/2019 16:29:52 INFO 140657760761664] Epoch[23] Batch[5] avg_epoch_loss=10.959688[0m
+    [31m[11/30/2019 16:29:52 INFO 140657760761664] #quality_metric: host=algo-1, epoch=23, batch=5 train loss <loss>=10.9596881866[0m
+    [31m[11/30/2019 16:29:52 INFO 140657760761664] Epoch[23] Batch [5]#011Speed: 1207.47 samples/sec#011loss=10.959688[0m
+    [31m[11/30/2019 16:29:52 INFO 140657760761664] processed a total of 304 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 330.36303520202637, "sum": 330.36303520202637, "min": 330.36303520202637}}, "EndTime": 1575131392.865151, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131392.534381}
+    [0m
+    [31m[11/30/2019 16:29:52 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=919.812798202 records/second[0m
+    [31m[11/30/2019 16:29:52 INFO 140657760761664] #progress_metric: host=algo-1, completed 24 % of epochs[0m
+    [31m[11/30/2019 16:29:52 INFO 140657760761664] #quality_metric: host=algo-1, epoch=23, train loss <loss>=10.7987992287[0m
+    [31m[11/30/2019 16:29:52 INFO 140657760761664] best epoch loss so far[0m
+    [31m[11/30/2019 16:29:52 INFO 140657760761664] Saved checkpoint to "/opt/ml/model/state_4d952657-a43f-4806-b881-55f084041e01-0000.params"[0m
+    [31m#metrics {"Metrics": {"state.serialize.time": {"count": 1, "max": 19.411087036132812, "sum": 19.411087036132812, "min": 19.411087036132812}}, "EndTime": 1575131392.885128, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131392.865255}
+    [0m
+    [31m[11/30/2019 16:29:52 INFO 140657760761664] Epoch[24] Batch[0] avg_epoch_loss=11.502991[0m
+    [31m[11/30/2019 16:29:52 INFO 140657760761664] #quality_metric: host=algo-1, epoch=24, batch=0 train loss <loss>=11.5029907227[0m
+    [31m[11/30/2019 16:29:53 INFO 140657760761664] Epoch[24] Batch[5] avg_epoch_loss=11.037862[0m
+    [31m[11/30/2019 16:29:53 INFO 140657760761664] #quality_metric: host=algo-1, epoch=24, batch=5 train loss <loss>=11.0378623009[0m
+    [31m[11/30/2019 16:29:53 INFO 140657760761664] Epoch[24] Batch [5]#011Speed: 1136.21 samples/sec#011loss=11.037862[0m
+    [31m[11/30/2019 16:29:53 INFO 140657760761664] Epoch[24] Batch[10] avg_epoch_loss=11.062090[0m
+    [31m[11/30/2019 16:29:53 INFO 140657760761664] #quality_metric: host=algo-1, epoch=24, batch=10 train loss <loss>=11.0911626816[0m
+    [31m[11/30/2019 16:29:53 INFO 140657760761664] Epoch[24] Batch [10]#011Speed: 1111.99 samples/sec#011loss=11.091163[0m
+    [31m[11/30/2019 16:29:53 INFO 140657760761664] processed a total of 341 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 378.1099319458008, "sum": 378.1099319458008, "min": 378.1099319458008}}, "EndTime": 1575131393.263366, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131392.885207}
+    [0m
+    [31m[11/30/2019 16:29:53 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=901.606249338 records/second[0m
+    [31m[11/30/2019 16:29:53 INFO 140657760761664] #progress_metric: host=algo-1, completed 25 % of epochs[0m
+    [31m[11/30/2019 16:29:53 INFO 140657760761664] #quality_metric: host=algo-1, epoch=24, train loss <loss>=11.0620897466[0m
+    [31m[11/30/2019 16:29:53 INFO 140657760761664] loss did not improve[0m
+    [31m[11/30/2019 16:29:53 INFO 140657760761664] Epoch[25] Batch[0] avg_epoch_loss=10.812670[0m
+    [31m[11/30/2019 16:29:53 INFO 140657760761664] #quality_metric: host=algo-1, epoch=25, batch=0 train loss <loss>=10.812669754[0m
+    [31m[11/30/2019 16:29:53 INFO 140657760761664] Epoch[25] Batch[5] avg_epoch_loss=10.899194[0m
+    [31m[11/30/2019 16:29:53 INFO 140657760761664] #quality_metric: host=algo-1, epoch=25, batch=5 train loss <loss>=10.8991940816[0m
+    [31m[11/30/2019 16:29:53 INFO 140657760761664] Epoch[25] Batch [5]#011Speed: 1145.95 samples/sec#011loss=10.899194[0m
+    [31m[11/30/2019 16:29:53 INFO 140657760761664] processed a total of 312 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 329.3180465698242, "sum": 329.3180465698242, "min": 329.3180465698242}}, "EndTime": 1575131393.593195, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131393.263439}
+    [0m
+    [31m[11/30/2019 16:29:53 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=947.004459947 records/second[0m
+    [31m[11/30/2019 16:29:53 INFO 140657760761664] #progress_metric: host=algo-1, completed 26 % of epochs[0m
+    [31m[11/30/2019 16:29:53 INFO 140657760761664] #quality_metric: host=algo-1, epoch=25, train loss <loss>=10.7822431564[0m
+    [31m[11/30/2019 16:29:53 INFO 140657760761664] best epoch loss so far[0m
+    [31m[11/30/2019 16:29:53 INFO 140657760761664] Saved checkpoint to "/opt/ml/model/state_9b76b505-ec67-40b3-94df-bb134f1035d5-0000.params"[0m
+    [31m#metrics {"Metrics": {"state.serialize.time": {"count": 1, "max": 19.988059997558594, "sum": 19.988059997558594, "min": 19.988059997558594}}, "EndTime": 1575131393.613767, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131393.593273}
+    [0m
+    [31m[11/30/2019 16:29:53 INFO 140657760761664] Epoch[26] Batch[0] avg_epoch_loss=10.912527[0m
+    [31m[11/30/2019 16:29:53 INFO 140657760761664] #quality_metric: host=algo-1, epoch=26, batch=0 train loss <loss>=10.9125270844[0m
+    [31m[11/30/2019 16:29:53 INFO 140657760761664] Epoch[26] Batch[5] avg_epoch_loss=10.956731[0m
+    [31m[11/30/2019 16:29:53 INFO 140657760761664] #quality_metric: host=algo-1, epoch=26, batch=5 train loss <loss>=10.9567310015[0m
+    [31m[11/30/2019 16:29:53 INFO 140657760761664] Epoch[26] Batch [5]#011Speed: 1206.31 samples/sec#011loss=10.956731[0m
+    [31m[11/30/2019 16:29:53 INFO 140657760761664] Epoch[26] Batch[10] avg_epoch_loss=11.084283[0m
+    [31m[11/30/2019 16:29:53 INFO 140657760761664] #quality_metric: host=algo-1, epoch=26, batch=10 train loss <loss>=11.2373447418[0m
+    [31m[11/30/2019 16:29:53 INFO 140657760761664] Epoch[26] Batch [10]#011Speed: 1168.12 samples/sec#011loss=11.237345[0m
+    [31m[11/30/2019 16:29:53 INFO 140657760761664] processed a total of 323 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 364.0120029449463, "sum": 364.0120029449463, "min": 364.0120029449463}}, "EndTime": 1575131393.977882, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131393.613821}
+    [0m
+    [31m[11/30/2019 16:29:53 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=887.077150741 records/second[0m
+    [31m[11/30/2019 16:29:53 INFO 140657760761664] #progress_metric: host=algo-1, completed 27 % of epochs[0m
+    [31m[11/30/2019 16:29:53 INFO 140657760761664] #quality_metric: host=algo-1, epoch=26, train loss <loss>=11.0842827017[0m
+    [31m[11/30/2019 16:29:53 INFO 140657760761664] loss did not improve[0m
+    [31m[11/30/2019 16:29:54 INFO 140657760761664] Epoch[27] Batch[0] avg_epoch_loss=11.405628[0m
+    [31m[11/30/2019 16:29:54 INFO 140657760761664] #quality_metric: host=algo-1, epoch=27, batch=0 train loss <loss>=11.4056282043[0m
+    [31m[11/30/2019 16:29:54 INFO 140657760761664] Epoch[27] Batch[5] avg_epoch_loss=11.410955[0m
+    [31m[11/30/2019 16:29:54 INFO 140657760761664] #quality_metric: host=algo-1, epoch=27, batch=5 train loss <loss>=11.4109549522[0m
+    [31m[11/30/2019 16:29:54 INFO 140657760761664] Epoch[27] Batch [5]#011Speed: 1171.53 samples/sec#011loss=11.410955[0m
+    [31m[11/30/2019 16:29:54 INFO 140657760761664] processed a total of 318 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 337.0828628540039, "sum": 337.0828628540039, "min": 337.0828628540039}}, "EndTime": 1575131394.315439, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131393.977955}
+    [0m
+    [31m[11/30/2019 16:29:54 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=943.111383263 records/second[0m
+    [31m[11/30/2019 16:29:54 INFO 140657760761664] #progress_metric: host=algo-1, completed 28 % of epochs[0m
+    [31m[11/30/2019 16:29:54 INFO 140657760761664] #quality_metric: host=algo-1, epoch=27, train loss <loss>=11.2308731079[0m
+    [31m[11/30/2019 16:29:54 INFO 140657760761664] loss did not improve[0m
+    [31m[11/30/2019 16:29:54 INFO 140657760761664] Epoch[28] Batch[0] avg_epoch_loss=10.775253[0m
+    [31m[11/30/2019 16:29:54 INFO 140657760761664] #quality_metric: host=algo-1, epoch=28, batch=0 train loss <loss>=10.7752532959[0m
+    [31m[11/30/2019 16:29:54 INFO 140657760761664] Epoch[28] Batch[5] avg_epoch_loss=11.065414[0m
+    [31m[11/30/2019 16:29:54 INFO 140657760761664] #quality_metric: host=algo-1, epoch=28, batch=5 train loss <loss>=11.0654142698[0m
+    [31m[11/30/2019 16:29:54 INFO 140657760761664] Epoch[28] Batch [5]#011Speed: 1148.01 samples/sec#011loss=11.065414[0m
+    [31m[11/30/2019 16:29:54 INFO 140657760761664] processed a total of 310 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 341.9628143310547, "sum": 341.9628143310547, "min": 341.9628143310547}}, "EndTime": 1575131394.657948, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131394.315508}
+    [0m
+    [31m[11/30/2019 16:29:54 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=906.236249471 records/second[0m
+    [31m[11/30/2019 16:29:54 INFO 140657760761664] #progress_metric: host=algo-1, completed 29 % of epochs[0m
+    [31m[11/30/2019 16:29:54 INFO 140657760761664] #quality_metric: host=algo-1, epoch=28, train loss <loss>=11.0119464874[0m
+    [31m[11/30/2019 16:29:54 INFO 140657760761664] loss did not improve[0m
+    [31m[11/30/2019 16:29:54 INFO 140657760761664] Epoch[29] Batch[0] avg_epoch_loss=11.090364[0m
+    [31m[11/30/2019 16:29:54 INFO 140657760761664] #quality_metric: host=algo-1, epoch=29, batch=0 train loss <loss>=11.0903635025[0m
+    [31m[11/30/2019 16:29:54 INFO 140657760761664] Epoch[29] Batch[5] avg_epoch_loss=10.968114[0m
+    [31m[11/30/2019 16:29:54 INFO 140657760761664] #quality_metric: host=algo-1, epoch=29, batch=5 train loss <loss>=10.9681135813[0m
+    [31m[11/30/2019 16:29:54 INFO 140657760761664] Epoch[29] Batch [5]#011Speed: 1245.21 samples/sec#011loss=10.968114[0m
+    [31m[11/30/2019 16:29:54 INFO 140657760761664] processed a total of 316 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 319.1089630126953, "sum": 319.1089630126953, "min": 319.1089630126953}}, "EndTime": 1575131394.97759, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131394.658024}
+    [0m
+    [31m[11/30/2019 16:29:54 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=989.922319409 records/second[0m
+    [31m[11/30/2019 16:29:54 INFO 140657760761664] #progress_metric: host=algo-1, completed 30 % of epochs[0m
+    [31m[11/30/2019 16:29:54 INFO 140657760761664] #quality_metric: host=algo-1, epoch=29, train loss <loss>=10.9914549828[0m
+    [31m[11/30/2019 16:29:54 INFO 140657760761664] loss did not improve[0m
+    [31m[11/30/2019 16:29:55 INFO 140657760761664] Epoch[30] Batch[0] avg_epoch_loss=11.099952[0m
+    [31m[11/30/2019 16:29:55 INFO 140657760761664] #quality_metric: host=algo-1, epoch=30, batch=0 train loss <loss>=11.0999517441[0m
+    [31m[11/30/2019 16:29:55 INFO 140657760761664] Epoch[30] Batch[5] avg_epoch_loss=10.965332[0m
+    [31m[11/30/2019 16:29:55 INFO 140657760761664] #quality_metric: host=algo-1, epoch=30, batch=5 train loss <loss>=10.9653320312[0m
+    [31m[11/30/2019 16:29:55 INFO 140657760761664] Epoch[30] Batch [5]#011Speed: 1226.64 samples/sec#011loss=10.965332[0m
+    [31m[11/30/2019 16:29:55 INFO 140657760761664] processed a total of 293 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 325.0389099121094, "sum": 325.0389099121094, "min": 325.0389099121094}}, "EndTime": 1575131395.303113, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131394.977663}
+    [0m
+    [31m[11/30/2019 16:29:55 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=901.119879863 records/second[0m
+    [31m[11/30/2019 16:29:55 INFO 140657760761664] #progress_metric: host=algo-1, completed 31 % of epochs[0m
+    [31m[11/30/2019 16:29:55 INFO 140657760761664] #quality_metric: host=algo-1, epoch=30, train loss <loss>=10.8014466286[0m
+    [31m[11/30/2019 16:29:55 INFO 140657760761664] loss did not improve[0m
+    [31m[11/30/2019 16:29:55 INFO 140657760761664] Epoch[31] Batch[0] avg_epoch_loss=11.109714[0m
+    [31m[11/30/2019 16:29:55 INFO 140657760761664] #quality_metric: host=algo-1, epoch=31, batch=0 train loss <loss>=11.1097135544[0m
+    [31m[11/30/2019 16:29:55 INFO 140657760761664] Epoch[31] Batch[5] avg_epoch_loss=11.098782[0m
+    [31m[11/30/2019 16:29:55 INFO 140657760761664] #quality_metric: host=algo-1, epoch=31, batch=5 train loss <loss>=11.0987817446[0m
+    [31m[11/30/2019 16:29:55 INFO 140657760761664] Epoch[31] Batch [5]#011Speed: 1119.19 samples/sec#011loss=11.098782[0m
+    [31m[11/30/2019 16:29:55 INFO 140657760761664] processed a total of 309 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 325.37198066711426, "sum": 325.37198066711426, "min": 325.37198066711426}}, "EndTime": 1575131395.628996, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131395.303189}
+    [0m
+    [31m[11/30/2019 16:29:55 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=949.356007788 records/second[0m
+    [31m[11/30/2019 16:29:55 INFO 140657760761664] #progress_metric: host=algo-1, completed 32 % of epochs[0m
+    [31m[11/30/2019 16:29:55 INFO 140657760761664] #quality_metric: host=algo-1, epoch=31, train loss <loss>=11.0050726891[0m
+    [31m[11/30/2019 16:29:55 INFO 140657760761664] loss did not improve[0m
+    [31m[11/30/2019 16:29:55 INFO 140657760761664] Epoch[32] Batch[0] avg_epoch_loss=10.975577[0m
+    [31m[11/30/2019 16:29:55 INFO 140657760761664] #quality_metric: host=algo-1, epoch=32, batch=0 train loss <loss>=10.9755773544[0m
+    [31m[11/30/2019 16:29:55 INFO 140657760761664] Epoch[32] Batch[5] avg_epoch_loss=10.815983[0m
+    [31m[11/30/2019 16:29:55 INFO 140657760761664] #quality_metric: host=algo-1, epoch=32, batch=5 train loss <loss>=10.8159825007[0m
+    [31m[11/30/2019 16:29:55 INFO 140657760761664] Epoch[32] Batch [5]#011Speed: 1165.20 samples/sec#011loss=10.815983[0m
+    [31m[11/30/2019 16:29:55 INFO 140657760761664] processed a total of 313 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 330.68108558654785, "sum": 330.68108558654785, "min": 330.68108558654785}}, "EndTime": 1575131395.96022, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131395.629072}
+    [0m
+    [31m[11/30/2019 16:29:55 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=946.214077417 records/second[0m
+    [31m[11/30/2019 16:29:55 INFO 140657760761664] #progress_metric: host=algo-1, completed 33 % of epochs[0m
+    [31m[11/30/2019 16:29:55 INFO 140657760761664] #quality_metric: host=algo-1, epoch=32, train loss <loss>=10.7815012932[0m
+    [31m[11/30/2019 16:29:55 INFO 140657760761664] best epoch loss so far[0m
+    [31m[11/30/2019 16:29:55 INFO 140657760761664] Saved checkpoint to "/opt/ml/model/state_2dd9a9a7-00b8-449a-aa62-2ae9701037b1-0000.params"[0m
+    [31m#metrics {"Metrics": {"state.serialize.time": {"count": 1, "max": 19.906044006347656, "sum": 19.906044006347656, "min": 19.906044006347656}}, "EndTime": 1575131395.980681, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131395.960296}
+    [0m
+    [31m[11/30/2019 16:29:56 INFO 140657760761664] Epoch[33] Batch[0] avg_epoch_loss=10.885527[0m
+    [31m[11/30/2019 16:29:56 INFO 140657760761664] #quality_metric: host=algo-1, epoch=33, batch=0 train loss <loss>=10.8855266571[0m
+    [31m[11/30/2019 16:29:56 INFO 140657760761664] Epoch[33] Batch[5] avg_epoch_loss=11.092681[0m
+    [31m[11/30/2019 16:29:56 INFO 140657760761664] #quality_metric: host=algo-1, epoch=33, batch=5 train loss <loss>=11.0926809311[0m
+    [31m[11/30/2019 16:29:56 INFO 140657760761664] Epoch[33] Batch [5]#011Speed: 1115.08 samples/sec#011loss=11.092681[0m
+    [31m[11/30/2019 16:29:56 INFO 140657760761664] Epoch[33] Batch[10] avg_epoch_loss=11.012475[0m
+    [31m[11/30/2019 16:29:56 INFO 140657760761664] #quality_metric: host=algo-1, epoch=33, batch=10 train loss <loss>=10.91622715[0m
+    [31m[11/30/2019 16:29:56 INFO 140657760761664] Epoch[33] Batch [10]#011Speed: 1119.30 samples/sec#011loss=10.916227[0m
+    [31m[11/30/2019 16:29:56 INFO 140657760761664] processed a total of 345 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 376.2049674987793, "sum": 376.2049674987793, "min": 376.2049674987793}}, "EndTime": 1575131396.356996, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131395.980739}
+    [0m
+    [31m[11/30/2019 16:29:56 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=916.768011333 records/second[0m
+    [31m[11/30/2019 16:29:56 INFO 140657760761664] #progress_metric: host=algo-1, completed 34 % of epochs[0m
+    [31m[11/30/2019 16:29:56 INFO 140657760761664] #quality_metric: host=algo-1, epoch=33, train loss <loss>=11.0124746669[0m
+    [31m[11/30/2019 16:29:56 INFO 140657760761664] loss did not improve[0m
+    [31m[11/30/2019 16:29:56 INFO 140657760761664] Epoch[34] Batch[0] avg_epoch_loss=10.840313[0m
+    [31m[11/30/2019 16:29:56 INFO 140657760761664] #quality_metric: host=algo-1, epoch=34, batch=0 train loss <loss>=10.8403129578[0m
+    [31m[11/30/2019 16:29:56 INFO 140657760761664] Epoch[34] Batch[5] avg_epoch_loss=10.774440[0m
+    [31m[11/30/2019 16:29:56 INFO 140657760761664] #quality_metric: host=algo-1, epoch=34, batch=5 train loss <loss>=10.7744396528[0m
+    [31m[11/30/2019 16:29:56 INFO 140657760761664] Epoch[34] Batch [5]#011Speed: 1189.46 samples/sec#011loss=10.774440[0m
+    [31m[11/30/2019 16:29:56 INFO 140657760761664] Epoch[34] Batch[10] avg_epoch_loss=10.920055[0m
+    [31m[11/30/2019 16:29:56 INFO 140657760761664] #quality_metric: host=algo-1, epoch=34, batch=10 train loss <loss>=11.094792366[0m
+    [31m[11/30/2019 16:29:56 INFO 140657760761664] Epoch[34] Batch [10]#011Speed: 1196.73 samples/sec#011loss=11.094792[0m
+    [31m[11/30/2019 16:29:56 INFO 140657760761664] processed a total of 335 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 352.2989749908447, "sum": 352.2989749908447, "min": 352.2989749908447}}, "EndTime": 1575131396.709889, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131396.357078}
+    [0m
+    [31m[11/30/2019 16:29:56 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=950.608038168 records/second[0m
+    [31m[11/30/2019 16:29:56 INFO 140657760761664] #progress_metric: host=algo-1, completed 35 % of epochs[0m
+    [31m[11/30/2019 16:29:56 INFO 140657760761664] #quality_metric: host=algo-1, epoch=34, train loss <loss>=10.9200545224[0m
+    [31m[11/30/2019 16:29:56 INFO 140657760761664] loss did not improve[0m
+    [31m[11/30/2019 16:29:56 INFO 140657760761664] Epoch[35] Batch[0] avg_epoch_loss=10.686173[0m
+    [31m[11/30/2019 16:29:56 INFO 140657760761664] #quality_metric: host=algo-1, epoch=35, batch=0 train loss <loss>=10.686173439[0m
+    [31m[11/30/2019 16:29:56 INFO 140657760761664] Epoch[35] Batch[5] avg_epoch_loss=10.848715[0m
+    [31m[11/30/2019 16:29:56 INFO 140657760761664] #quality_metric: host=algo-1, epoch=35, batch=5 train loss <loss>=10.8487146695[0m
+    [31m[11/30/2019 16:29:56 INFO 140657760761664] Epoch[35] Batch [5]#011Speed: 1058.96 samples/sec#011loss=10.848715[0m
+    [31m[11/30/2019 16:29:57 INFO 140657760761664] Epoch[35] Batch[10] avg_epoch_loss=10.778698[0m
+    [31m[11/30/2019 16:29:57 INFO 140657760761664] #quality_metric: host=algo-1, epoch=35, batch=10 train loss <loss>=10.6946788788[0m
+    [31m[11/30/2019 16:29:57 INFO 140657760761664] Epoch[35] Batch [10]#011Speed: 1053.95 samples/sec#011loss=10.694679[0m
+    [31m[11/30/2019 16:29:57 INFO 140657760761664] processed a total of 321 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 404.58083152770996, "sum": 404.58083152770996, "min": 404.58083152770996}}, "EndTime": 1575131397.114952, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131396.70996}
+    [0m
+    [31m[11/30/2019 16:29:57 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=793.207624003 records/second[0m
+    [31m[11/30/2019 16:29:57 INFO 140657760761664] #progress_metric: host=algo-1, completed 36 % of epochs[0m
+    [31m[11/30/2019 16:29:57 INFO 140657760761664] #quality_metric: host=algo-1, epoch=35, train loss <loss>=10.778698401[0m
+    [31m[11/30/2019 16:29:57 INFO 140657760761664] best epoch loss so far[0m
+    [31m[11/30/2019 16:29:57 INFO 140657760761664] Saved checkpoint to "/opt/ml/model/state_0116ea36-118a-4989-b7ab-41a84fce5f3d-0000.params"[0m
+    [31m#metrics {"Metrics": {"state.serialize.time": {"count": 1, "max": 19.61493492126465, "sum": 19.61493492126465, "min": 19.61493492126465}}, "EndTime": 1575131397.135088, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131397.115025}
+    [0m
+    [31m[11/30/2019 16:29:57 INFO 140657760761664] Epoch[36] Batch[0] avg_epoch_loss=10.761388[0m
+    [31m[11/30/2019 16:29:57 INFO 140657760761664] #quality_metric: host=algo-1, epoch=36, batch=0 train loss <loss>=10.761387825[0m
+    [31m[11/30/2019 16:29:57 INFO 140657760761664] Epoch[36] Batch[5] avg_epoch_loss=10.424281[0m
+    [31m[11/30/2019 16:29:57 INFO 140657760761664] #quality_metric: host=algo-1, epoch=36, batch=5 train loss <loss>=10.4242806435[0m
+    [31m[11/30/2019 16:29:57 INFO 140657760761664] Epoch[36] Batch [5]#011Speed: 1225.75 samples/sec#011loss=10.424281[0m
+    [31m[11/30/2019 16:29:57 INFO 140657760761664] Epoch[36] Batch[10] avg_epoch_loss=10.717050[0m
+    [31m[11/30/2019 16:29:57 INFO 140657760761664] #quality_metric: host=algo-1, epoch=36, batch=10 train loss <loss>=11.0683725357[0m
+    [31m[11/30/2019 16:29:57 INFO 140657760761664] Epoch[36] Batch [10]#011Speed: 1217.64 samples/sec#011loss=11.068373[0m
+    [31m[11/30/2019 16:29:57 INFO 140657760761664] processed a total of 323 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 345.71099281311035, "sum": 345.71099281311035, "min": 345.71099281311035}}, "EndTime": 1575131397.480908, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131397.135147}
+    [0m
+    [31m[11/30/2019 16:29:57 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=934.01719999 records/second[0m
+    [31m[11/30/2019 16:29:57 INFO 140657760761664] #progress_metric: host=algo-1, completed 37 % of epochs[0m
+    [31m[11/30/2019 16:29:57 INFO 140657760761664] #quality_metric: host=algo-1, epoch=36, train loss <loss>=10.7170496854[0m
+    [31m[11/30/2019 16:29:57 INFO 140657760761664] best epoch loss so far[0m
+    [31m[11/30/2019 16:29:57 INFO 140657760761664] Saved checkpoint to "/opt/ml/model/state_eb6eba5a-a99c-4c25-9f73-934897b081a4-0000.params"[0m
+    [31m#metrics {"Metrics": {"state.serialize.time": {"count": 1, "max": 19.63210105895996, "sum": 19.63210105895996, "min": 19.63210105895996}}, "EndTime": 1575131397.501094, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131397.480983}
+    [0m
+    [31m[11/30/2019 16:29:57 INFO 140657760761664] Epoch[37] Batch[0] avg_epoch_loss=10.980392[0m
+    [31m[11/30/2019 16:29:57 INFO 140657760761664] #quality_metric: host=algo-1, epoch=37, batch=0 train loss <loss>=10.9803915024[0m
+    [31m[11/30/2019 16:29:57 INFO 140657760761664] Epoch[37] Batch[5] avg_epoch_loss=10.693951[0m
+    [31m[11/30/2019 16:29:57 INFO 140657760761664] #quality_metric: host=algo-1, epoch=37, batch=5 train loss <loss>=10.6939511299[0m
+    [31m[11/30/2019 16:29:57 INFO 140657760761664] Epoch[37] Batch [5]#011Speed: 1228.86 samples/sec#011loss=10.693951[0m
+    [31m[11/30/2019 16:29:57 INFO 140657760761664] Epoch[37] Batch[10] avg_epoch_loss=10.766361[0m
+    [31m[11/30/2019 16:29:57 INFO 140657760761664] #quality_metric: host=algo-1, epoch=37, batch=10 train loss <loss>=10.8532535553[0m
+    [31m[11/30/2019 16:29:57 INFO 140657760761664] Epoch[37] Batch [10]#011Speed: 1114.16 samples/sec#011loss=10.853254[0m
+    [31m[11/30/2019 16:29:57 INFO 140657760761664] processed a total of 346 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 365.476131439209, "sum": 365.476131439209, "min": 365.476131439209}}, "EndTime": 1575131397.866699, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131397.501155}
+    [0m
+    [31m[11/30/2019 16:29:57 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=946.428097497 records/second[0m
+    [31m[11/30/2019 16:29:57 INFO 140657760761664] #progress_metric: host=algo-1, completed 38 % of epochs[0m
+    [31m[11/30/2019 16:29:57 INFO 140657760761664] #quality_metric: host=algo-1, epoch=37, train loss <loss>=10.7663613233[0m
+    [31m[11/30/2019 16:29:57 INFO 140657760761664] loss did not improve[0m
+    [31m[11/30/2019 16:29:57 INFO 140657760761664] Epoch[38] Batch[0] avg_epoch_loss=10.943336[0m
+    [31m[11/30/2019 16:29:57 INFO 140657760761664] #quality_metric: host=algo-1, epoch=38, batch=0 train loss <loss>=10.9433355331[0m
+    [31m[11/30/2019 16:29:58 INFO 140657760761664] Epoch[38] Batch[5] avg_epoch_loss=10.928860[0m
+    [31m[11/30/2019 16:29:58 INFO 140657760761664] #quality_metric: host=algo-1, epoch=38, batch=5 train loss <loss>=10.9288597107[0m
+    [31m[11/30/2019 16:29:58 INFO 140657760761664] Epoch[38] Batch [5]#011Speed: 1245.15 samples/sec#011loss=10.928860[0m
+    [31m[11/30/2019 16:29:58 INFO 140657760761664] Epoch[38] Batch[10] avg_epoch_loss=10.751878[0m
+    [31m[11/30/2019 16:29:58 INFO 140657760761664] #quality_metric: host=algo-1, epoch=38, batch=10 train loss <loss>=10.5395008087[0m
+    [31m[11/30/2019 16:29:58 INFO 140657760761664] Epoch[38] Batch [10]#011Speed: 1212.10 samples/sec#011loss=10.539501[0m
+    [31m[11/30/2019 16:29:58 INFO 140657760761664] processed a total of 334 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 355.93605041503906, "sum": 355.93605041503906, "min": 355.93605041503906}}, "EndTime": 1575131398.223124, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131397.866775}
+    [0m
+    [31m[11/30/2019 16:29:58 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=938.076110925 records/second[0m
+    [31m[11/30/2019 16:29:58 INFO 140657760761664] #progress_metric: host=algo-1, completed 39 % of epochs[0m
+    [31m[11/30/2019 16:29:58 INFO 140657760761664] #quality_metric: host=algo-1, epoch=38, train loss <loss>=10.7518783916[0m
+    [31m[11/30/2019 16:29:58 INFO 140657760761664] loss did not improve[0m
+    [31m[11/30/2019 16:29:58 INFO 140657760761664] Epoch[39] Batch[0] avg_epoch_loss=10.241104[0m
+    [31m[11/30/2019 16:29:58 INFO 140657760761664] #quality_metric: host=algo-1, epoch=39, batch=0 train loss <loss>=10.241104126[0m
+    [31m[11/30/2019 16:29:58 INFO 140657760761664] Epoch[39] Batch[5] avg_epoch_loss=10.674151[0m
+    [31m[11/30/2019 16:29:58 INFO 140657760761664] #quality_metric: host=algo-1, epoch=39, batch=5 train loss <loss>=10.6741507848[0m
+    [31m[11/30/2019 16:29:58 INFO 140657760761664] Epoch[39] Batch [5]#011Speed: 983.99 samples/sec#011loss=10.674151[0m
+    [31m[11/30/2019 16:29:58 INFO 140657760761664] processed a total of 312 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 375.98586082458496, "sum": 375.98586082458496, "min": 375.98586082458496}}, "EndTime": 1575131398.599621, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131398.223193}
+    [0m
+    [31m[11/30/2019 16:29:58 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=829.564361432 records/second[0m
+    [31m[11/30/2019 16:29:58 INFO 140657760761664] #progress_metric: host=algo-1, completed 40 % of epochs[0m
+    [31m[11/30/2019 16:29:58 INFO 140657760761664] #quality_metric: host=algo-1, epoch=39, train loss <loss>=10.7625462532[0m
+    [31m[11/30/2019 16:29:58 INFO 140657760761664] loss did not improve[0m
+    [31m[11/30/2019 16:29:58 INFO 140657760761664] Epoch[40] Batch[0] avg_epoch_loss=10.869785[0m
+    [31m[11/30/2019 16:29:58 INFO 140657760761664] #quality_metric: host=algo-1, epoch=40, batch=0 train loss <loss>=10.8697853088[0m
+    [31m[11/30/2019 16:29:58 INFO 140657760761664] Epoch[40] Batch[5] avg_epoch_loss=10.707974[0m
+    [31m[11/30/2019 16:29:58 INFO 140657760761664] #quality_metric: host=algo-1, epoch=40, batch=5 train loss <loss>=10.7079737981[0m
+    [31m[11/30/2019 16:29:58 INFO 140657760761664] Epoch[40] Batch [5]#011Speed: 1014.36 samples/sec#011loss=10.707974[0m
+    [31m[11/30/2019 16:29:58 INFO 140657760761664] Epoch[40] Batch[10] avg_epoch_loss=10.762103[0m
+    [31m[11/30/2019 16:29:58 INFO 140657760761664] #quality_metric: host=algo-1, epoch=40, batch=10 train loss <loss>=10.8270570755[0m
+    [31m[11/30/2019 16:29:58 INFO 140657760761664] Epoch[40] Batch [10]#011Speed: 1179.95 samples/sec#011loss=10.827057[0m
+    [31m[11/30/2019 16:29:58 INFO 140657760761664] processed a total of 324 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 385.1900100708008, "sum": 385.1900100708008, "min": 385.1900100708008}}, "EndTime": 1575131398.985327, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131398.599699}
+    [0m
+    [31m[11/30/2019 16:29:58 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=840.900762962 records/second[0m
+    [31m[11/30/2019 16:29:58 INFO 140657760761664] #progress_metric: host=algo-1, completed 41 % of epochs[0m
+    [31m[11/30/2019 16:29:58 INFO 140657760761664] #quality_metric: host=algo-1, epoch=40, train loss <loss>=10.7621025606[0m
+    [31m[11/30/2019 16:29:58 INFO 140657760761664] loss did not improve[0m
+    [31m[11/30/2019 16:29:59 INFO 140657760761664] Epoch[41] Batch[0] avg_epoch_loss=11.000257[0m
+    [31m[11/30/2019 16:29:59 INFO 140657760761664] #quality_metric: host=algo-1, epoch=41, batch=0 train loss <loss>=11.0002565384[0m
+    [31m[11/30/2019 16:29:59 INFO 140657760761664] Epoch[41] Batch[5] avg_epoch_loss=10.934035[0m
+    [31m[11/30/2019 16:29:59 INFO 140657760761664] #quality_metric: host=algo-1, epoch=41, batch=5 train loss <loss>=10.9340354602[0m
+    [31m[11/30/2019 16:29:59 INFO 140657760761664] Epoch[41] Batch [5]#011Speed: 1200.30 samples/sec#011loss=10.934035[0m
+    [31m[11/30/2019 16:29:59 INFO 140657760761664] processed a total of 306 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 347.9650020599365, "sum": 347.9650020599365, "min": 347.9650020599365}}, "EndTime": 1575131399.333776, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131398.985401}
+    [0m
+    [31m[11/30/2019 16:29:59 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=879.120496626 records/second[0m
+    [31m[11/30/2019 16:29:59 INFO 140657760761664] #progress_metric: host=algo-1, completed 42 % of epochs[0m
+    [31m[11/30/2019 16:29:59 INFO 140657760761664] #quality_metric: host=algo-1, epoch=41, train loss <loss>=10.8994800568[0m
+    [31m[11/30/2019 16:29:59 INFO 140657760761664] loss did not improve[0m
+    [31m[11/30/2019 16:29:59 INFO 140657760761664] Epoch[42] Batch[0] avg_epoch_loss=10.722577[0m
+    [31m[11/30/2019 16:29:59 INFO 140657760761664] #quality_metric: host=algo-1, epoch=42, batch=0 train loss <loss>=10.722577095[0m
+    [31m[11/30/2019 16:29:59 INFO 140657760761664] Epoch[42] Batch[5] avg_epoch_loss=10.752093[0m
+    [31m[11/30/2019 16:29:59 INFO 140657760761664] #quality_metric: host=algo-1, epoch=42, batch=5 train loss <loss>=10.7520933151[0m
+    [31m[11/30/2019 16:29:59 INFO 140657760761664] Epoch[42] Batch [5]#011Speed: 1227.94 samples/sec#011loss=10.752093[0m
+    [31m[11/30/2019 16:29:59 INFO 140657760761664] processed a total of 314 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 323.21691513061523, "sum": 323.21691513061523, "min": 323.21691513061523}}, "EndTime": 1575131399.657482, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131399.333851}
+    [0m
+    [31m[11/30/2019 16:29:59 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=971.18650822 records/second[0m
+    [31m[11/30/2019 16:29:59 INFO 140657760761664] #progress_metric: host=algo-1, completed 43 % of epochs[0m
+    [31m[11/30/2019 16:29:59 INFO 140657760761664] #quality_metric: host=algo-1, epoch=42, train loss <loss>=10.7396873474[0m
+    [31m[11/30/2019 16:29:59 INFO 140657760761664] loss did not improve[0m
+    [31m[11/30/2019 16:29:59 INFO 140657760761664] Epoch[43] Batch[0] avg_epoch_loss=10.040716[0m
+    [31m[11/30/2019 16:29:59 INFO 140657760761664] #quality_metric: host=algo-1, epoch=43, batch=0 train loss <loss>=10.0407161713[0m
+    [31m[11/30/2019 16:29:59 INFO 140657760761664] Epoch[43] Batch[5] avg_epoch_loss=10.671568[0m
+    [31m[11/30/2019 16:29:59 INFO 140657760761664] #quality_metric: host=algo-1, epoch=43, batch=5 train loss <loss>=10.671567599[0m
+    [31m[11/30/2019 16:29:59 INFO 140657760761664] Epoch[43] Batch [5]#011Speed: 1073.07 samples/sec#011loss=10.671568[0m
+    [31m[11/30/2019 16:30:00 INFO 140657760761664] Epoch[43] Batch[10] avg_epoch_loss=10.726690[0m
+    [31m[11/30/2019 16:30:00 INFO 140657760761664] #quality_metric: host=algo-1, epoch=43, batch=10 train loss <loss>=10.7928371429[0m
+    [31m[11/30/2019 16:30:00 INFO 140657760761664] Epoch[43] Batch [10]#011Speed: 1078.08 samples/sec#011loss=10.792837[0m
+    [31m[11/30/2019 16:30:00 INFO 140657760761664] processed a total of 342 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 369.65417861938477, "sum": 369.65417861938477, "min": 369.65417861938477}}, "EndTime": 1575131400.027668, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131399.657553}
+    [0m
+    [31m[11/30/2019 16:30:00 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=924.914045559 records/second[0m
+    [31m[11/30/2019 16:30:00 INFO 140657760761664] #progress_metric: host=algo-1, completed 44 % of epochs[0m
+    [31m[11/30/2019 16:30:00 INFO 140657760761664] #quality_metric: host=algo-1, epoch=43, train loss <loss>=10.726690119[0m
+    [31m[11/30/2019 16:30:00 INFO 140657760761664] loss did not improve[0m
+    [31m[11/30/2019 16:30:00 INFO 140657760761664] Epoch[44] Batch[0] avg_epoch_loss=11.044625[0m
+    [31m[11/30/2019 16:30:00 INFO 140657760761664] #quality_metric: host=algo-1, epoch=44, batch=0 train loss <loss>=11.0446252823[0m
+    [31m[11/30/2019 16:30:00 INFO 140657760761664] Epoch[44] Batch[5] avg_epoch_loss=10.733619[0m
+    [31m[11/30/2019 16:30:00 INFO 140657760761664] #quality_metric: host=algo-1, epoch=44, batch=5 train loss <loss>=10.733619372[0m
+    [31m[11/30/2019 16:30:00 INFO 140657760761664] Epoch[44] Batch [5]#011Speed: 965.37 samples/sec#011loss=10.733619[0m
+    [31m[11/30/2019 16:30:00 INFO 140657760761664] Epoch[44] Batch[10] avg_epoch_loss=10.951829[0m
+    [31m[11/30/2019 16:30:00 INFO 140657760761664] #quality_metric: host=algo-1, epoch=44, batch=10 train loss <loss>=11.2136800766[0m
+    [31m[11/30/2019 16:30:00 INFO 140657760761664] Epoch[44] Batch [10]#011Speed: 1201.88 samples/sec#011loss=11.213680[0m
+    [31m[11/30/2019 16:30:00 INFO 140657760761664] processed a total of 321 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 390.2130126953125, "sum": 390.2130126953125, "min": 390.2130126953125}}, "EndTime": 1575131400.418395, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131400.027744}
+    [0m
+    [31m[11/30/2019 16:30:00 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=822.391450467 records/second[0m
+    [31m[11/30/2019 16:30:00 INFO 140657760761664] #progress_metric: host=algo-1, completed 45 % of epochs[0m
+    [31m[11/30/2019 16:30:00 INFO 140657760761664] #quality_metric: host=algo-1, epoch=44, train loss <loss>=10.9518287832[0m
+    [31m[11/30/2019 16:30:00 INFO 140657760761664] loss did not improve[0m
+    [31m[11/30/2019 16:30:00 INFO 140657760761664] Epoch[45] Batch[0] avg_epoch_loss=10.878129[0m
+    [31m[11/30/2019 16:30:00 INFO 140657760761664] #quality_metric: host=algo-1, epoch=45, batch=0 train loss <loss>=10.8781290054[0m
+    [31m[11/30/2019 16:30:00 INFO 140657760761664] Epoch[45] Batch[5] avg_epoch_loss=10.760768[0m
+    [31m[11/30/2019 16:30:00 INFO 140657760761664] #quality_metric: host=algo-1, epoch=45, batch=5 train loss <loss>=10.7607679367[0m
+    [31m[11/30/2019 16:30:00 INFO 140657760761664] Epoch[45] Batch [5]#011Speed: 1154.22 samples/sec#011loss=10.760768[0m
+    [31m[11/30/2019 16:30:00 INFO 140657760761664] processed a total of 320 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 336.11607551574707, "sum": 336.11607551574707, "min": 336.11607551574707}}, "EndTime": 1575131400.75503, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131400.418471}
+    [0m
+    [31m[11/30/2019 16:30:00 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=951.730033682 records/second[0m
+    [31m[11/30/2019 16:30:00 INFO 140657760761664] #progress_metric: host=algo-1, completed 46 % of epochs[0m
+    [31m[11/30/2019 16:30:00 INFO 140657760761664] #quality_metric: host=algo-1, epoch=45, train loss <loss>=10.7703885078[0m
+    [31m[11/30/2019 16:30:00 INFO 140657760761664] loss did not improve[0m
+    [31m[11/30/2019 16:30:00 INFO 140657760761664] Epoch[46] Batch[0] avg_epoch_loss=10.351963[0m
+    [31m[11/30/2019 16:30:00 INFO 140657760761664] #quality_metric: host=algo-1, epoch=46, batch=0 train loss <loss>=10.3519630432[0m
+    [31m[11/30/2019 16:30:00 INFO 140657760761664] Epoch[46] Batch[5] avg_epoch_loss=10.757680[0m
+    [31m[11/30/2019 16:30:01 INFO 140657760761664] #quality_metric: host=algo-1, epoch=46, batch=5 train loss <loss>=10.7576799393[0m
+    [31m[11/30/2019 16:30:01 INFO 140657760761664] Epoch[46] Batch [5]#011Speed: 1133.89 samples/sec#011loss=10.757680[0m
+    [31m[11/30/2019 16:30:01 INFO 140657760761664] processed a total of 319 examples[0m
+    [31m#metrics {"Metrics": {"update.time": {"count": 1, "max": 352.22411155700684, "sum": 352.22411155700684, "min": 352.22411155700684}}, "EndTime": 1575131401.107782, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131400.755107}
+    [0m
+    [31m[11/30/2019 16:30:01 INFO 140657760761664] #throughput_metric: host=algo-1, train throughput=905.382885068 records/second[0m
+    [31m[11/30/2019 16:30:01 INFO 140657760761664] #progress_metric: host=algo-1, completed 47 % of epochs[0m
+    [31m[11/30/2019 16:30:01 INFO 140657760761664] #quality_metric: host=algo-1, epoch=46, train loss <loss>=10.7637651443[0m
+    [31m[11/30/2019 16:30:01 INFO 140657760761664] loss did not improve[0m
+    [31m[11/30/2019 16:30:01 INFO 140657760761664] Loading parameters from best epoch (36)[0m
+    [31m#metrics {"Metrics": {"state.deserialize.time": {"count": 1, "max": 8.539915084838867, "sum": 8.539915084838867, "min": 8.539915084838867}}, "EndTime": 1575131401.116903, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131401.107859}
+    [0m
+    [31m[11/30/2019 16:30:01 INFO 140657760761664] stopping training now[0m
+    [31m[11/30/2019 16:30:01 INFO 140657760761664] #progress_metric: host=algo-1, completed 100 % of epochs[0m
+    [31m[11/30/2019 16:30:01 INFO 140657760761664] Final loss: 10.7170496854 (occurred at epoch 36)[0m
+    [31m[11/30/2019 16:30:01 INFO 140657760761664] #quality_metric: host=algo-1, train final_loss <loss>=10.7170496854[0m
+    [31m[11/30/2019 16:30:01 INFO 140657760761664] Worker algo-1 finished training.[0m
+    [31m[11/30/2019 16:30:01 WARNING 140657760761664] wait_for_all_workers will not sync workers since the kv store is not running distributed[0m
+    [31m[11/30/2019 16:30:01 INFO 140657760761664] All workers finished. Serializing model for prediction.[0m
+    [31m#metrics {"Metrics": {"get_graph.time": {"count": 1, "max": 108.70194435119629, "sum": 108.70194435119629, "min": 108.70194435119629}}, "EndTime": 1575131401.226341, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131401.116966}
+    [0m
+    [31m[11/30/2019 16:30:01 INFO 140657760761664] Number of GPUs being used: 0[0m
+    [31m#metrics {"Metrics": {"finalize.time": {"count": 1, "max": 153.6271572113037, "sum": 153.6271572113037, "min": 153.6271572113037}}, "EndTime": 1575131401.271223, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131401.226416}
+    [0m
+    [31m[11/30/2019 16:30:01 INFO 140657760761664] Serializing to /opt/ml/model/model_algo-1[0m
+    [31m[11/30/2019 16:30:01 INFO 140657760761664] Saved checkpoint to "/opt/ml/model/model_algo-1-0000.params"[0m
+    [31m#metrics {"Metrics": {"model.serialize.time": {"count": 1, "max": 7.069826126098633, "sum": 7.069826126098633, "min": 7.069826126098633}}, "EndTime": 1575131401.278404, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131401.271295}
+    [0m
+    [31m[11/30/2019 16:30:01 INFO 140657760761664] Successfully serialized the model for prediction.[0m
+    [31m[11/30/2019 16:30:01 INFO 140657760761664] Evaluating model accuracy on testset using 100 samples[0m
+    [31m#metrics {"Metrics": {"model.bind.time": {"count": 1, "max": 0.03695487976074219, "sum": 0.03695487976074219, "min": 0.03695487976074219}}, "EndTime": 1575131401.279076, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131401.278445}
+    [0m
+    [31m#metrics {"Metrics": {"model.score.time": {"count": 1, "max": 417.0551300048828, "sum": 417.0551300048828, "min": 417.0551300048828}}, "EndTime": 1575131401.6961, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131401.279135}
+    [0m
+    [31m[11/30/2019 16:30:01 INFO 140657760761664] #test_score (algo-1, RMSE): 26350.5937694[0m
+    [31m[11/30/2019 16:30:01 INFO 140657760761664] #test_score (algo-1, mean_wQuantileLoss): 0.036173888[0m
+    [31m[11/30/2019 16:30:01 INFO 140657760761664] #test_score (algo-1, wQuantileLoss[0.1]): 0.026595287[0m
+    [31m[11/30/2019 16:30:01 INFO 140657760761664] #test_score (algo-1, wQuantileLoss[0.2]): 0.040024366[0m
+    [31m[11/30/2019 16:30:01 INFO 140657760761664] #test_score (algo-1, wQuantileLoss[0.3]): 0.046109695[0m
+    [31m[11/30/2019 16:30:01 INFO 140657760761664] #test_score (algo-1, wQuantileLoss[0.4]): 0.04796083[0m
+    [31m[11/30/2019 16:30:01 INFO 140657760761664] #test_score (algo-1, wQuantileLoss[0.5]): 0.044627175[0m
+    [31m[11/30/2019 16:30:01 INFO 140657760761664] #test_score (algo-1, wQuantileLoss[0.6]): 0.041932512[0m
+    [31m[11/30/2019 16:30:01 INFO 140657760761664] #test_score (algo-1, wQuantileLoss[0.7]): 0.03474249[0m
+    [31m[11/30/2019 16:30:01 INFO 140657760761664] #test_score (algo-1, wQuantileLoss[0.8]): 0.027418833[0m
+    [31m[11/30/2019 16:30:01 INFO 140657760761664] #test_score (algo-1, wQuantileLoss[0.9]): 0.016153822[0m
+    [31m[11/30/2019 16:30:01 INFO 140657760761664] #quality_metric: host=algo-1, test mean_wQuantileLoss <loss>=0.0361738875508[0m
+    [31m[11/30/2019 16:30:01 INFO 140657760761664] #quality_metric: host=algo-1, test RMSE <loss>=26350.5937694[0m
+    [31m#metrics {"Metrics": {"totaltime": {"count": 1, "max": 18092.56100654602, "sum": 18092.56100654602, "min": 18092.56100654602}, "setuptime": {"count": 1, "max": 9.248971939086914, "sum": 9.248971939086914, "min": 9.248971939086914}}, "EndTime": 1575131401.711991, "Dimensions": {"Host": "algo-1", "Operation": "training", "Algorithm": "AWS/DeepAR"}, "StartTime": 1575131401.696185}
+    [0m
 
+    2019-11-30 16:30:13 Uploading - Uploading generated training model
+    2019-11-30 16:30:13 Completed - Training job completed
+    Training seconds: 66
+    Billable seconds: 66
 
-.. code:: python3
-
-    %%local
-    class DeepARPredictor(sagemaker.predictor.RealTimePredictor):
-        
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, content_type=sagemaker.content_types.CONTENT_TYPE_JSON, **kwargs)
-            
-        def predict(self, ts, cat=None, dynamic_feat=None, 
-                    num_samples=100, return_samples=False, quantiles=["0.1", "0.5", "0.9"]):
-            """Requests the prediction of for the time series listed in `ts`, each with the (optional)
-            corresponding category listed in `cat`.
-            
-            ts -- `pandas.Series` object, the time series to predict
-            cat -- integer, the group associated to the time series (default: None)
-            num_samples -- integer, number of samples to compute at prediction time (default: 100)
-            return_samples -- boolean indicating whether to include samples in the response (default: False)
-            quantiles -- list of strings specifying the quantiles to compute (default: ["0.1", "0.5", "0.9"])
-            
-            Return value: list of `pandas.DataFrame` objects, each containing the predictions
-            """
-            prediction_time = ts.index[-1] + 1
-            quantiles = [str(q) for q in quantiles]
-            req = self.__encode_request(ts, cat, dynamic_feat, num_samples, return_samples, quantiles)
-            res = super(DeepARPredictor, self).predict(req)
-            return self.__decode_response(res, ts.index.freq, prediction_time, return_samples)
-        
-        def __encode_request(self, ts, cat, dynamic_feat, num_samples, return_samples, quantiles):
-            instance = series_to_dict(ts, cat if cat is not None else None, dynamic_feat if dynamic_feat else None)
-    
-            configuration = {
-                "num_samples": num_samples,
-                "output_types": ["quantiles", "samples"] if return_samples else ["quantiles"],
-                "quantiles": quantiles
-            }
-            
-            http_request_data = {
-                "instances": [instance],
-                "configuration": configuration
-            }
-            
-            return json.dumps(http_request_data).encode('utf-8')
-        
-        def __decode_response(self, response, freq, prediction_time, return_samples):
-            # we only sent one time series so we only receive one in return
-            # however, if possible one will pass multiple time series as predictions will then be faster
-            predictions = json.loads(response.decode('utf-8'))['predictions'][0]
-            prediction_length = len(next(iter(predictions['quantiles'].values())))
-            prediction_index = pd.DatetimeIndex(start=prediction_time, freq=freq, periods=prediction_length)        
-            if return_samples:
-                dict_of_samples = {'sample_' + str(i): s for i, s in enumerate(predictions['samples'])}
-            else:
-                dict_of_samples = {}
-            return pd.DataFrame(data={**predictions['quantiles'], **dict_of_samples}, index=prediction_index)
-    
-        def set_frequency(self, freq):
-            self.freq = freq
-            
-    def encode_target(ts):
-        return [x if np.isfinite(x) else "NaN" for x in ts]        
-    
-    def series_to_dict(ts, cat=None, dynamic_feat=None):
-        """Given a pandas.Series object, returns a dictionary encoding the time series.
-    
-        ts -- a pands.Series object with the target time series
-        cat -- an integer indicating the time series category
-    
-        Return value: a dictionary
-        """
-        obj = {"start": str(ts.index[0]), "target": encode_target(ts)}
-        if cat is not None:
-            obj["cat"] = cat
-        if dynamic_feat is not None:
-            obj["dynamic_feat"] = dynamic_feat        
-        return obj
-
-.. code:: python3
-
-    %%local
-    predictor = estimator.deploy(
-        initial_instance_count=1,
-        instance_type='ml.m4.xlarge',
-        predictor_cls=DeepARPredictor
-    )
-
-
-
-.. parsed-literal::
-
-    ---------------------------------------------------------------------------------------------------!
 
 DeepAR Deep Dive
 ----------------
 
-Let’s elaborate on the DeepAR model’s architecture by walking through an
-example. When interested in quantifying the confidence of the estimates
-produced, then it’s probabilistic forecasts that are wanted. The data
-we’re working with is real-valued, so let’s opt for the Gaussian
-likelihood:
+While the training is happening, Let’s elaborate on the DeepAR model’s
+architecture by walking through an example. When interested in
+quantifying the confidence of the estimates produced, then it’s
+probabilistic forecasts that are wanted. The data we’re working with is
+real-valued, so let’s opt for the Gaussian likelihood:
 
 .. math:: \ell(y_t|\mu_t,\sigma_t)=\frac{1}{\sqrt{2\pi\sigma^2}}\exp{\frac{-(y_t-\mu_t)^2}{2\sigma^2}}.
 
@@ -1851,14 +1671,110 @@ etc, until the end of the prediction horizon. In the interactive plots
 below, we’ll see how Monte Carlo samples are able to provide us a
 confidence interval about the point estimate.
 
-.. code:: python3
+.. code:: python
+
+    %%local
+    class DeepARPredictor(sagemaker.predictor.RealTimePredictor):
+
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, content_type=sagemaker.content_types.CONTENT_TYPE_JSON, **kwargs)
+
+        def predict(self, ts, cat=None, dynamic_feat=None,
+                    num_samples=100, return_samples=False, quantiles=["0.1", "0.5", "0.9"]):
+            """Requests the prediction of for the time series listed in `ts`, each with the (optional)
+            corresponding category listed in `cat`.
+
+            ts -- `pandas.Series` object, the time series to predict
+            cat -- integer, the group associated to the time series (default: None)
+            num_samples -- integer, number of samples to compute at prediction time (default: 100)
+            return_samples -- boolean indicating whether to include samples in the response (default: False)
+            quantiles -- list of strings specifying the quantiles to compute (default: ["0.1", "0.5", "0.9"])
+
+            Return value: list of `pandas.DataFrame` objects, each containing the predictions
+            """
+            prediction_time = ts.index[-1] + 1
+            quantiles = [str(q) for q in quantiles]
+            req = self.__encode_request(ts, cat, dynamic_feat, num_samples, return_samples, quantiles)
+            res = super(DeepARPredictor, self).predict(req)
+            return self.__decode_response(res, ts.index.freq, prediction_time, return_samples)
+
+        def __encode_request(self, ts, cat, dynamic_feat, num_samples, return_samples, quantiles):
+            instance = series_to_dict(ts, cat if cat is not None else None, dynamic_feat if dynamic_feat else None)
+
+            configuration = {
+                "num_samples": num_samples,
+                "output_types": ["quantiles", "samples"] if return_samples else ["quantiles"],
+                "quantiles": quantiles
+            }
+
+            http_request_data = {
+                "instances": [instance],
+                "configuration": configuration
+            }
+
+            return json.dumps(http_request_data).encode('utf-8')
+
+        def __decode_response(self, response, freq, prediction_time, return_samples):
+            # we only sent one time series so we only receive one in return
+            # however, if possible one will pass multiple time series as predictions will then be faster
+            predictions = json.loads(response.decode('utf-8'))['predictions'][0]
+            prediction_length = len(next(iter(predictions['quantiles'].values())))
+            prediction_index = pd.DatetimeIndex(start=prediction_time, freq=freq, periods=prediction_length)
+            if return_samples:
+                dict_of_samples = {'sample_' + str(i): s for i, s in enumerate(predictions['samples'])}
+            else:
+                dict_of_samples = {}
+            return pd.DataFrame(data={**predictions['quantiles'], **dict_of_samples}, index=prediction_index)
+
+        def set_frequency(self, freq):
+            self.freq = freq
+
+    def encode_target(ts):
+        return [x if np.isfinite(x) else "NaN" for x in ts]
+
+    def series_to_dict(ts, cat=None, dynamic_feat=None):
+        """Given a pandas.Series object, returns a dictionary encoding the time series.
+
+        ts -- a pands.Series object with the target time series
+        cat -- an integer indicating the time series category
+
+        Return value: a dictionary
+        """
+        obj = {"start": str(ts.index[0]), "target": encode_target(ts)}
+        if cat is not None:
+            obj["cat"] = cat
+        if dynamic_feat is not None:
+            obj["dynamic_feat"] = dynamic_feat
+        return obj
+
+Deploying a realtime predictor
+------------------------------
+
+Next we will deploy a predictor, this may take a few minutes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code:: python
+
+    %%local
+    predictor = estimator.deploy(
+        initial_instance_count=1,
+        instance_type='ml.m4.xlarge',
+        predictor_cls=DeepARPredictor
+    )
+
+
+
+.. parsed-literal::
+
+    --------------------------------------------------------------------------------------!
+
+Running Predictions on the Endpoint
+-----------------------------------
+
+.. code:: python
 
     %%local
     ABB = full_timeseries.asfreq('d')
-
-.. code:: python3
-
-    %%local
     print('Green Rides:')
     print(predictor.predict(ts=ABB.loc[end_training:, 'green'], quantiles=[0.10, 0.5, 0.90], num_samples=100).head())
     print('\nYellow Rides:')
@@ -1871,200 +1787,47 @@ confidence interval about the point estimate.
 
     Green Rides:
                          0.1           0.5           0.9
-    2019-07-01  11696.563477  13904.709961  15993.275391
-    2019-07-02  12471.116211  14914.283203  16623.171875
-    2019-07-03  13116.726562  15247.833984  16880.519531
-    2019-07-04  14178.374023  15928.555664  17472.890625
-    2019-07-05  14434.592773  16769.384766  18430.316406
-    
+    2019-07-01   9721.018555  13791.329102  17538.664062
+    2019-07-02  11092.904297  14636.870117  17553.996094
+    2019-07-03  11470.556641  14888.299805  18519.500000
+    2019-07-04  11351.886719  15973.585938  20251.890625
+    2019-07-05  13768.468750  16813.535156  20389.726562
+
     Yellow Rides:
                           0.1            0.5            0.9
-    2019-07-01  175893.859375  207219.656250  229232.093750
-    2019-07-02  213402.359375  238125.218750  265153.187500
-    2019-07-03  211633.953125  242357.671875  276456.406250
-    2019-07-04  216138.390625  243189.203125  277507.656250
-    2019-07-05  210033.875000  238050.812500  259129.984375
-    
+    2019-07-01  159293.500000  194948.109375  227773.562500
+    2019-07-02  184475.156250  215566.890625  241038.796875
+    2019-07-03  203786.625000  233359.468750  265797.250000
+    2019-07-04  210038.375000  249315.265625  285376.531250
+    2019-07-05  225598.546875  251787.218750  281431.187500
+
     FHV Rides:
                         0.1          0.5          0.9
-    2019-07-01  619888.4375  731436.2500  815895.5000
-    2019-07-02  607809.2500  708945.4375  800879.8125
-    2019-07-03  594175.3125  703851.5000  801319.6250
-    2019-07-04  649068.3125  733550.5000  851867.3750
-    2019-07-05  729027.3125  802756.6875  925071.3750
+    2019-07-01  585261.7500  675419.6250  758377.4375
+    2019-07-02  601097.9375  668050.7500  754662.2500
+    2019-07-03  638367.8750  716293.1875  772745.3125
+    2019-07-04  703654.0625  780941.1875  852240.3750
+    2019-07-05  768018.5625  832646.1875  923119.3750
 
 
-.. code:: python3
-
-    %%local
-    import matplotlib
-    import matplotlib.pyplot as plt
-    
-    def plot(
-        predictor, 
-        target_ts, 
-        cat=None, 
-        dynamic_feat=None, 
-        forecast_date=end_training, 
-        show_samples=False, 
-        plot_history=7 * 12,
-        confidence=80,
-        num_samples=100,
-        draw_color='blue'
-    ):
-        print("Calling endpoint to generate {} predictions starting from {} ...".format(target_ts.name, str(forecast_date)))
-        assert(confidence > 50 and confidence < 100)
-        low_quantile = 0.5 - confidence * 0.005
-        up_quantile = confidence * 0.005 + 0.5
-            
-        # we first construct the argument to call our model
-        args = {
-            "ts": target_ts[:forecast_date],
-            "return_samples": show_samples,
-            "quantiles": [low_quantile, 0.5, up_quantile],
-            "num_samples": num_samples
-        }
-    
-    
-        if dynamic_feat is not None:
-            args["dynamic_feat"] = dynamic_feat
-            fig = plt.figure(figsize=(20, 6))
-            ax = plt.subplot(2, 1, 1)
-        else:
-            fig = plt.figure(figsize=(20, 3))
-            ax = plt.subplot(1,1,1)
-        
-        if cat is not None:
-            args["cat"] = cat
-            ax.text(0.9, 0.9, 'cat = {}'.format(cat), transform=ax.transAxes)
-    
-        # call the end point to get the prediction
-        prediction = predictor.predict(**args)
-    
-        # plot the samples
-        mccolor = draw_color
-        if show_samples: 
-            for key in prediction.keys():
-                if "sample" in key:
-                    prediction[key].plot(color='lightskyblue', alpha=0.2, label='_nolegend_')
-                    prediction[key].plot(color='light'+mccolor.replace('dark',''), alpha=0.2, label='_nolegend_')
-                    
-                    
-        # the date didn't have a frequency in it, so setting it here.
-        new_date = pd.Timestamp(forecast_date, freq='d')
-        target_section = target_ts[new_date-plot_history:new_date+prediction_length]
-        target_section.plot(color="black", label='target')
-        plt.title(target_ts.name.upper(), color='darkred')
-        
-        # plot the confidence interval and the median predicted
-        ax.fill_between(
-            prediction[str(low_quantile)].index, 
-            prediction[str(low_quantile)].values, 
-            prediction[str(up_quantile)].values, 
-            color=mccolor, alpha=0.3, label='{}% confidence interval'.format(confidence)
-        )
-        prediction["0.5"].plot(color=mccolor, label='P50')
-        ax.legend(loc=2)    
-        
-        # fix the scale as the samples may change it
-        ax.set_ylim(target_section.min() * 0.5, target_section.max() * 1.5)
-        
-        if dynamic_feat is not None:
-            for i, f in enumerate(dynamic_feat, start=1):
-                ax = plt.subplot(len(dynamic_feat) * 2, 1, len(dynamic_feat) + i, sharex=ax)
-                feat_ts = pd.Series(
-                    index=pd.DatetimeIndex(start=target_ts.index[0], freq=target_ts.index.freq, periods=len(f)),
-                    data=f
-                )
-                feat_ts[forecast_date-plot_history:forecast_date+prediction_length].plot(ax=ax, color='g')
-
-.. code:: python3
+.. code:: python
 
     %%local
-    from __future__ import print_function
-    from ipywidgets import interact, interactive, fixed, interact_manual
-    import ipywidgets as widgets
-    from ipywidgets import IntSlider, FloatSlider, Checkbox, RadioButtons
-    import datetime
-    
-    @interact_manual(
-        series_type=RadioButtons(options=['full_fhv', 'yellow', 'green'], description='Type'),
-        forecast_day=IntSlider(min=0, max=100, value=0, style=style),
-        confidence=IntSlider(min=60, max=95, value=80, step=5, style=style),
-        history_weeks_plot=IntSlider(min=1, max=20, value=1, style=style),
-        num_samples=IntSlider(min=100, max=1000, value=100, step=500, style=style),
-        show_samples=Checkbox(value=True),
-        continuous_update=False
-    )
-    
-    def plot_interact(series_type, forecast_day, confidence, history_weeks_plot, show_samples, num_samples):   
-        plot(
-            predictor,
-            target_ts=ABB[series_type].asfreq(freq='d', fill_value=0),
-            forecast_date=end_training + datetime.timedelta(days=forecast_day),
-            show_samples=show_samples,
-            plot_history=history_weeks_plot * prediction_length,
-            confidence=confidence,
-            num_samples=num_samples
-        )
+    endpoint_name = predictor.endpoint
 
+    %store ABB
+    %store endpoint_name
+    %store end_training
+    %store prediction_length
 
 
 .. parsed-literal::
 
-    interactive(children=(RadioButtons(description='Type', options=('full_fhv', 'yellow', 'green'), value='full_fh…
+    Stored 'ABB' (DataFrame)
+    Stored 'endpoint_name' (str)
+    Stored 'end_training' (Timestamp)
+    Stored 'prediction_length' (int)
 
 
-.. code:: python3
-
-    %%local
-    l = ['full_fhv', 'yellow', 'green']
-    for i in range(len(time_series_training)):
-        plt.figure()
-        plot(
-            predictor,
-            target_ts=ABB[l[i]],
-            forecast_date=end_training,
-            show_samples=True,
-            plot_history= 2 * prediction_length,
-            confidence=60,
-        );
-
-
-.. parsed-literal::
-
-    Calling endpoint to generate full_fhv predictions starting from 2019-04-08 00:00:00 ...
-    Calling endpoint to generate yellow predictions starting from 2019-04-08 00:00:00 ...
-    Calling endpoint to generate green predictions starting from 2019-04-08 00:00:00 ...
-
-
-
-.. parsed-literal::
-
-    <Figure size 432x288 with 0 Axes>
-
-
-
-.. image:: output_47_2.png
-
-
-
-.. parsed-literal::
-
-    <Figure size 432x288 with 0 Axes>
-
-
-
-.. image:: output_47_4.png
-
-
-
-.. parsed-literal::
-
-    <Figure size 432x288 with 0 Axes>
-
-
-
-.. image:: output_47_6.png
-
-
+We’ll show you in the next notebook, how to recreate the predictor and evaluate the results more.
+-------------------------------------------------------------------------------------------------
