@@ -33,9 +33,9 @@ you create ETL (extract, transform, and load) jobs.
 .. code:: python3
 
     import boto3
-    
+
     database_name = '2019reinventWorkshop'
-    
+
     ## lets first create a namespace for the tables:
     glue_client = boto3.client('glue')
     create_database_resp = glue_client.create_database(
@@ -102,7 +102,7 @@ Waiting for the Crawler to finish
 .. code:: python3
 
     import time
-     
+
     response = glue_client.get_crawler(
         Name=crawler_name
     )
@@ -110,21 +110,25 @@ Waiting for the Crawler to finish
         print(response['Crawler']['State'])
         # Wait for 40 seconds
         time.sleep(40)
-        
+
         response = glue_client.get_crawler(
             Name=crawler_name
         )
-    
+
     print('finished running', response['Crawler']['State'])
 
 
 .. parsed-literal::
 
+    RUNNING
+    RUNNING
+    STOPPING
+    STOPPING
     finished running READY
 
 
-Quering the data
-----------------
+Querying the data
+-----------------
 
 We’ll use Athena to query the data. Athena allows us to perform SQL
 queries against datasets on S3, without having to transform them, load
@@ -155,13 +159,13 @@ JDBC/ODBC connection
 
     from pyathena import connect
     import pandas as pd
-    
+
     sagemaker_session = sagemaker.Session()
-    
+
     conn = connect(s3_staging_dir="s3://" + athena_data_bucket,
                    region_name=sagemaker_session.boto_region_name)
-    
-    df = pd.read_sql('SELECT \'yellow\' type, count(*) ride_count FROM "' + database_name + '"."yellow" ' + 
+
+    df = pd.read_sql('SELECT \'yellow\' type, count(*) ride_count FROM "' + database_name + '"."yellow" ' +
                      'UNION ALL SELECT \'green\' type, count(*) ride_count FROM "' + database_name + '"."green"' +
                      'UNION ALL SELECT \'fhv\' type, count(*) ride_count FROM "' + database_name + '"."fhv"', conn)
     print(df)
@@ -172,26 +176,22 @@ JDBC/ODBC connection
 
          type  ride_count
     0   green    12105351
-    1     fhv   292722358
-    2  yellow   147263398
+    1  yellow   147263398
+    2     fhv   292722358
 
 
 
 
 .. parsed-literal::
 
-    <matplotlib.axes._subplots.AxesSubplot at 0x7f12a607dc50>
+    <matplotlib.axes._subplots.AxesSubplot at 0x7f6c9ad19828>
 
-
-
-
-.. image:: output_14_2.png
 
 
 .. code:: python3
 
     green_etl = '2019reinvent_green'
-    
+
     response = glue_client.start_job_run(
         JobName=green_etl,
         WorkerType='Standard', # other options include: 'G.1X'|'G.2X',
@@ -200,32 +200,38 @@ JDBC/ODBC connection
     print('response from starting green')
     print(response)
 
-after kicking it off, you can see it running in the console too:
 
-Wait until the ETL finishes
+.. parsed-literal::
 
-.. code:: python3
+    response from starting green
+    {'JobRunId': 'jr_d51a70e617a0c7459b3af986ff047ee211696c13ce509736ba01f4778b45b759', 'ResponseMetadata': {'RequestId': '40ef03ea-1387-11ea-a9c8-7df52ce46fb6', 'HTTPStatusCode': 200, 'HTTPHeaders': {'date': 'Sat, 30 Nov 2019 15:37:02 GMT', 'content-type': 'application/x-amz-json-1.1', 'content-length': '82', 'connection': 'keep-alive', 'x-amzn-requestid': '40ef03ea-1387-11ea-a9c8-7df52ce46fb6'}, 'RetryAttempts': 0}}
 
-    import time
-     
-    response = glue_client.get_crawler(
-        Name=crawler_name + '_normalized'
-    )
-    while (response['Crawler']['State'] == 'RUNNING') | (response['Crawler']['State'] == 'STOPPING'):
-        print(response['Crawler']['State'])
-        # Wait for 40 seconds
-        time.sleep(40)
-        
-        response = glue_client.get_crawler(
-            Name=crawler_name + '_normalized'
-        )
-    
-    print('finished running', response['Crawler']['State'])
+
+After kicking it off, you can see it running in the console too:
+https://console.aws.amazon.com/glue/home?region=us-east-1#etl:tab=jobs
+
+WAIT UNTIL THE ETL JOB FINISHES BEFORE CONTINUING! ALSO, YOU MUST CHANGE
+THE BUCKET PATH IN THIS CELL - FIND THE BUCKET IN S3 THAT CONTAINS
+‘2019reinventetlbucket’ in the name
 
 .. code:: python3
 
-    normalized_bucket = 's3://reinvent-snively-2019-lab/canonical/'
-    
+    #let's list the s3 bucket name:
+    !aws s3 ls | grep '2019reinventetlbucket' | head -1
+
+
+.. parsed-literal::
+
+    2019-11-30 14:38:27 reinvent-2019reinventetlbucket-656uo7rzqlvu
+
+
+.. code:: python3
+
+    # syntax should be s3://...
+    normalized_bucket = 's3://reinvent-2019reinventetlbucket-656uo7rzqlvu'
+
+    assert(normalized_bucket != 's3://FILL_IN_BUCKET_NAME')
+
     create_crawler_resp = glue_client.create_crawler(
         Name=crawler_name + '_normalized',
         Role='GlueRole',
@@ -234,7 +240,7 @@ Wait until the ETL finishes
         Targets={
             'S3Targets': [
                 {
-                    'Path': normalized_bucket,
+                    'Path': normalized_bucket + "/canonical/",
                 },
             ]
         }
@@ -250,7 +256,7 @@ Let’s wait for the next crawler to finish, this will discover the normalized d
 .. code:: python3
 
     import time
-     
+
     response = glue_client.get_crawler(
         Name=crawler_name + '_normalized'
     )
@@ -258,11 +264,11 @@ Let’s wait for the next crawler to finish, this will discover the normalized d
         print(response['Crawler']['State'])
         # Wait for 40 seconds
         time.sleep(40)
-        
+
         response = glue_client.get_crawler(
             Name=crawler_name + '_normalized'
         )
-    
+
     print('finished running', response['Crawler']['State'])
 
 
@@ -286,17 +292,13 @@ Now let’s look at the total counts for the aggregated information
     print(normalized_df)
     normalized_df.plot.bar(x='type', y='ride_count')
     #
-    #     type  ride_count
-    #0   green    12105351
-    #1     fhv   292722358
-    #2  yellow   147263398
 
 
 .. parsed-literal::
 
          type  ride_count
-    0  yellow   147263398
-    1     fhv   292722358
+    0     fhv   292722358
+    1  yellow   147263386
     2   green    12105351
 
 
@@ -304,7 +306,7 @@ Now let’s look at the total counts for the aggregated information
 
 .. parsed-literal::
 
-    <matplotlib.axes._subplots.AxesSubplot at 0x7f129f58c4a8>
+    <matplotlib.axes._subplots.AxesSubplot at 0x7f6c8f4570f0>
 
 
 
@@ -323,7 +325,7 @@ Now let’s look at the total counts for the aggregated information
 
 .. parsed-literal::
 
-    <matplotlib.axes._subplots.AxesSubplot at 0x7f129f356dd8>
+    <matplotlib.axes._subplots.AxesSubplot at 0x7f6c8f2fc1d0>
 
 
 
@@ -345,7 +347,7 @@ that we want to eliminate before we build our model.
     if type(typeperday_df.index) != pd.core.indexes.datetimes.DatetimeIndex:
         print('setting index to date')
         typeperday_df = typeperday_df.set_index('date', drop=True)
-        
+
     typeperday_df.head()
 
 
@@ -363,11 +365,11 @@ that we want to eliminate before we build our model.
         .dataframe tbody tr th:only-of-type {
             vertical-align: middle;
         }
-    
+
         .dataframe tbody tr th {
             vertical-align: top;
         }
-    
+
         .dataframe thead th {
             text-align: right;
         }
@@ -387,29 +389,29 @@ that we want to eliminate before we build our model.
       </thead>
       <tbody>
         <tr>
-          <th>2018-02-10</th>
-          <td>fhv</td>
-          <td>837532</td>
-        </tr>
-        <tr>
-          <th>2018-10-25</th>
+          <th>2018-05-01</th>
           <td>yellow</td>
-          <td>2</td>
+          <td>305434</td>
         </tr>
         <tr>
-          <th>2017-01-03</th>
-          <td>yellow</td>
-          <td>1</td>
-        </tr>
-        <tr>
-          <th>2018-01-27</th>
+          <th>2018-05-01</th>
           <td>fhv</td>
-          <td>749203</td>
+          <td>629360</td>
         </tr>
         <tr>
-          <th>2018-10-25</th>
+          <th>2018-03-04</th>
           <td>fhv</td>
-          <td>760140</td>
+          <td>716458</td>
+        </tr>
+        <tr>
+          <th>2018-08-11</th>
+          <td>fhv</td>
+          <td>807873</td>
+        </tr>
+        <tr>
+          <th>2018-04-24</th>
+          <td>fhv</td>
+          <td>639764</td>
         </tr>
       </tbody>
     </table>
@@ -426,7 +428,7 @@ that we want to eliminate before we build our model.
 
 .. parsed-literal::
 
-    <matplotlib.axes._subplots.AxesSubplot at 0x7f12a6374c88>
+    <matplotlib.axes._subplots.AxesSubplot at 0x7f6c8f2c6198>
 
 
 
@@ -445,7 +447,7 @@ Note, we are querying the transformed data.
 We should check the raw dataset to see if it’s also bad or something
 happened in the ETL process
 
-Let’s find the 2 2088 records to make sure they are in the source data
+Let’s find the two 2088 records to make sure they are in the source data
 
 .. code:: python3
 
@@ -461,11 +463,11 @@ Let’s find the 2 2088 records to make sure they are in the source data
         .dataframe tbody tr th:only-of-type {
             vertical-align: middle;
         }
-    
+
         .dataframe tbody tr th {
             vertical-align: top;
         }
-    
+
         .dataframe thead th {
             text-align: right;
         }
@@ -546,9 +548,9 @@ Let’s find the 2 2088 records to make sure they are in the source data
 .. code:: python3
 
     ## Next let's plot this per type:
-    typeperday_df.loc['2018-01-01':'2019-07-30'].pivot_table(index='date', 
-                                                             columns='type', 
-                                                             values='cnt', 
+    typeperday_df.loc['2018-01-01':'2019-07-30'].pivot_table(index='date',
+                                                             columns='type',
+                                                             values='cnt',
                                                              aggfunc='sum').plot()
 
 
@@ -556,7 +558,7 @@ Let’s find the 2 2088 records to make sure they are in the source data
 
 .. parsed-literal::
 
-    <matplotlib.axes._subplots.AxesSubplot at 0x7f129f3aff98>
+    <matplotlib.axes._subplots.AxesSubplot at 0x7f6c8f111a58>
 
 
 
@@ -595,16 +597,16 @@ series charts:
     response = glue_client.start_crawler(
         Name=crawler_name + '_fhvhv'
     )
-    
 
 
-wait to discover the fhvhv dataset…
+
+Wait to discover the fhvhv dataset…
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code:: python3
 
     import time
-     
+
     response = glue_client.get_crawler(
         Name=crawler_name + '_fhvhv'
     )
@@ -612,11 +614,11 @@ wait to discover the fhvhv dataset…
         print(response['Crawler']['State'])
         # Wait for 40 seconds
         time.sleep(40)
-        
+
         response = glue_client.get_crawler(
             Name=crawler_name + '_fhvhv'
         )
-    
+
     print('finished running', response['Crawler']['State'])
 
 
@@ -641,19 +643,19 @@ wait to discover the fhvhv dataset…
 .. parsed-literal::
 
                  type     cnt
-    date                     
-    2019-02-18  fhvhv  595367
-    2019-02-07  fhvhv  649575
-    2019-02-25  fhvhv  657598
-    2019-02-22  fhvhv  774664
-    2019-06-16  fhvhv  690146
+    date
+    2019-05-30  fhvhv  723800
+    2019-04-23  fhvhv  600870
+    2019-05-23  fhvhv  698940
+    2019-03-31  fhvhv  794717
+    2019-03-17  fhvhv  779620
 
 
 
 
 .. parsed-literal::
 
-    <matplotlib.axes._subplots.AxesSubplot at 0x7f12a60addd8>
+    <matplotlib.axes._subplots.AxesSubplot at 0x7f6c8f1cb320>
 
 
 
@@ -663,9 +665,9 @@ wait to discover the fhvhv dataset…
 
 .. code:: python3
 
-    pd.concat([typeperday_fhvhv_df, typeperday_df], sort=False).loc['2018-01-01':'2019-07-30'].pivot_table(index='date', 
-                                                             columns='type', 
-                                                             values='cnt', 
+    pd.concat([typeperday_fhvhv_df, typeperday_df], sort=False).loc['2018-01-01':'2019-07-30'].pivot_table(index='date',
+                                                             columns='type',
+                                                             values='cnt',
                                                              aggfunc='sum').plot()
 
 
@@ -673,7 +675,7 @@ wait to discover the fhvhv dataset…
 
 .. parsed-literal::
 
-    <matplotlib.axes._subplots.AxesSubplot at 0x7f12a608b710>
+    <matplotlib.axes._subplots.AxesSubplot at 0x7f6c8f3a9be0>
 
 
 
@@ -681,6 +683,5 @@ wait to discover the fhvhv dataset…
 .. image:: output_37_1.png
 
 
-That looks better – let’s start looking at performing EDA now.
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
+That looks better – let’s start looking at performing EDA now. Please open the other notebook file in your SageMaker notebook instance.
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
