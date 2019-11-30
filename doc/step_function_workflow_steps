@@ -76,4 +76,4 @@
 
 ![New Execution](/images/new_execution.png)
 
-5. Now we can watch the workflow progress through each of the states. Be sure to to inspect the inputs and outputs of each state.
+5. Now we can watch the workflow progress through each of the states. Be sure to to inspect the inputs and outputs of each state, and you should receive an SMS on your cell-phone with the inference results when it completes!
