@@ -27,3 +27,4 @@ Notebooks
     DataDiscoveryAndConversation/DataDiscoveryAndConversation
     GluePySparkMLFeatureEngineering/GluePySparkMLFeatureEngineering
     TestingForecastResults/TestingForecastResults
+    InferenceStepFunctions/step_function_workflow_steps
