@@ -180,7 +180,7 @@
 		  "Arguments" : {"GLUE_PYTHON_VERSION": "3"},
 		  "EndpointName" : "reinvent2019",
 		  "GlueVersion" : "1.0",
-		  "NumberOfNodes" : 5,
+		  "NumberOfNodes" : 10,
 		  "RoleArn" : { "Fn::GetAtt" : [ "GlueRole", "Arn" ] }
 		}
 	},
