@@ -17,6 +17,48 @@ The workshop uses the following architecture:
 
 .. image:: images/WorkshopArchitecture.png
 
+Steps for launching the workshop environment using EVENT ENGINE
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+open a browser and navigate to https://dashboard.eventengine.run/login
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Enter a 12-character "hash" provided to you by workshop organizer.
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Click on "Accpet Terms & Login"
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+.. image:: /images/image-01.png
+   :target: /images/image-01.png
+   :alt: Navigate to Sagemaker Service
+
+
+Click on "AWS Console"
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+.. image:: /images/image-02.png
+   :target: /images/image-02.png
+   :alt: Navigate to Sagemaker Service
+
+
+Please, log off from any other AWS accounts you are currently logged into
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Click on "Open AWS Console"
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+.. image:: images/image-03.png
+   :target: images/image-03.png
+   :alt: Navigate to Sagemaker Service
+
+
+You should see a screen like this.
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 ****************
 Notebooks
 ****************
